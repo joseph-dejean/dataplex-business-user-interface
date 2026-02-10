@@ -1,0 +1,59 @@
+# This file specifies files that are *not* uploaded to Google Cloud
+# using gcloud. It follows the same syntax as .gitignore
+
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Build output (will be built in Cloud Build)
+dist/
+build/
+**/dist/
+**/build/
+
+# Environment files (use Cloud Build substitutions instead)
+.env
+.env.*
+!.env.example
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Testing
+coverage/
+.nyc_output/
+
+# Docker (not needed for Cloud Build)
+Dockerfile*
+.dockerignore
+
+# CI/CD configs (Cloud Build uses cloudbuild.yaml)
+.gitlab-ci.yml
+.travis.yml
+
+.env
+.env.local
+.env.development.local
+stats.html
+.git
+.vscode
+.cache
+.npm
+.gemini
+.codeoss
+node_modulesvenv
+EOF
