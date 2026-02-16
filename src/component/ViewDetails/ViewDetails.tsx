@@ -691,11 +691,13 @@ const ViewDetails = () => {
                         <Tab key="lineage" label="Lineage" {...tabProps(2)} />,
                         <Tab key="dataProfile" label="Data Profile" {...tabProps(3)} />,
                         <Tab key="dataQuality" label="Data Quality" {...tabProps(4)} />,
+                        <Tab key="chat" label="Chat with Table" {...tabProps(5)} />,
 
                       ] : getEntryType(displayEntry.name, '/') === 'Datasets' ? [
                         <Tab key="overview" label="Overview" {...tabProps(0)} />,
                         <Tab key="entryList" label="Entry List" {...tabProps(1)} />,
-                        <Tab key="annotations" label="Aspects" {...tabProps(2)} />
+                        <Tab key="annotations" label="Aspects" {...tabProps(2)} />,
+                        <Tab key="chat" label="Chat with Table" {...tabProps(3)} />
                       ] : glossaryType === 'glossary' || glossaryType === 'category' ? [
                         <Tab key="overview" label="Overview" {...tabProps(0)} />,
                         <Tab key="categories" label="Categories" {...tabProps(1)} />,
@@ -743,10 +745,12 @@ const ViewDetails = () => {
                   <CustomTabPanel value={tabValue} index={4}>
                     <DataQuality scanName={dqScanName} />
                   </CustomTabPanel>
-                  {/* Chat Interface - Embedded Mode */}
-                  <Box sx={{ marginTop: '2rem', marginBottom: '2rem' }}>
-                    <ChatInterface entry={displayEntry} mode="embedded" />
-                  </Box>
+                  {/* Chat Interface - Tab Mode */}
+                  <CustomTabPanel value={tabValue} index={5}>
+                    <Box sx={{ marginTop: '2rem', marginBottom: '2rem' }}>
+                      <ChatInterface entry={displayEntry} mode="embedded" />
+                    </Box>
+                  </CustomTabPanel>
                 </>
               ) : getEntryType(displayEntry.name, '/') === 'Datasets' ? (
                 <>
@@ -762,6 +766,11 @@ const ViewDetails = () => {
                       onExpandAll={handleAnnotationExpandAll}
                     />
                     {annotationTab}
+                  </CustomTabPanel>
+                  <CustomTabPanel value={tabValue} index={3}>
+                    <Box sx={{ marginTop: '2rem', marginBottom: '2rem' }}>
+                      <ChatInterface entry={displayEntry} mode="embedded" />
+                    </Box>
                   </CustomTabPanel>
                 </>
               ) : glossaryType === 'glossary' || glossaryType === 'category' ? (
@@ -885,6 +894,11 @@ const ViewDetails = () => {
                       onExpandAll={handleAnnotationExpandAll}
                     />
                     {annotationTab}
+                  </CustomTabPanel>
+                  <CustomTabPanel value={tabValue} index={2}>
+                    <Box sx={{ marginTop: '2rem', marginBottom: '2rem' }}>
+                      <ChatInterface entry={displayEntry} mode="embedded" />
+                    </Box>
                   </CustomTabPanel>
 
                 </>
