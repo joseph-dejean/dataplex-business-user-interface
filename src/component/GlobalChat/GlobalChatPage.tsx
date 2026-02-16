@@ -71,22 +71,32 @@ const GlobalChatPage: React.FC = () => {
                                 Select one or more tables from the sidebar to start a conversation.
                                 You can cross-reference data from different datasets and projects.
                             </Typography>
+                            <Button
+                                variant="outlined"
+                                endIcon={<OpenInNewIcon />}
+                                onClick={() => window.open('https://console.cloud.google.com/bigquery/agents_hub;chatPath=%2Fbq%2Fchat%2Fnew?project=aeyelytics', '_blank')}
+                                sx={{ textTransform: 'none', color: '#1967D2', borderColor: '#1967D2' }}
+                            >
+                                Create an Agent
+                            </Button>
                         </Paper>
                     </Box>
                 ) : (
-                    <ChatInterface initialTables={selectedTables} mode="global" />
+                    <ChatInterface
+                        initialTables={selectedTables}
+                        mode="global"
+                        headerAction={
+                            <Button
+                                variant="text"
+                                endIcon={<OpenInNewIcon />}
+                                onClick={() => window.open('https://console.cloud.google.com/bigquery/agents_hub;chatPath=%2Fbq%2Fchat%2Fnew?project=aeyelytics', '_blank')}
+                                sx={{ textTransform: 'none', color: '#1967D2' }}
+                            >
+                                Create an Agent
+                            </Button>
+                        }
+                    />
                 )}
-            </Box>
-            {/* Create Agent Link */}
-            <Box sx={{ position: 'absolute', top: 20, right: 30 }}>
-                <Button
-                    variant="text"
-                    endIcon={<OpenInNewIcon />}
-                    onClick={() => window.open('https://console.cloud.google.com/bigquery/agents_hub;agentsHubTab=Agents;agentsPath=%2Fbq%2Fagents%2Fnew;chatPath=%2Fbq%2Fchat%2Fnew', '_blank')}
-                    sx={{ textTransform: 'none', color: '#1967D2' }}
-                >
-                    Create an Agent
-                </Button>
             </Box>
         </Box>
     );

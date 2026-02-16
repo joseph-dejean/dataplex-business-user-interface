@@ -62,6 +62,7 @@ interface ChatInterfaceProps {
     entry?: any; // The primary table/entry context
     mode?: 'embedded' | 'global'; // 'embedded' hides sidebar/extra controls, 'global' allows multi-table
     initialTables?: any[]; // For global chat initial selection
+    headerAction?: React.ReactNode;
 }
 
 interface Message {
@@ -72,7 +73,7 @@ interface Message {
     data?: any[]; // Raw data rows from API
 }
 
-const ChatInterface: React.FC<ChatInterfaceProps> = ({ entry, mode = 'global' }) => {
+const ChatInterface: React.FC<ChatInterfaceProps> = ({ entry, mode = 'global', headerAction }) => {
     const { user } = useAuth();
     const navigate = useNavigate();
     const [input, setInput] = useState('');
@@ -225,17 +226,20 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ entry, mode = 'global' })
                         Ask natural language questions about this table's data.
                     </Typography>
                 </Box>
-                {mode === 'embedded' && (
-                    <Button
-                        variant="outlined"
-                        startIcon={<OpenInNewIcon />}
-                        onClick={handleOpenGlobalChat}
-                        size="small"
-                        sx={{ color: '#0B57D0', borderColor: '#0B57D0', textTransform: 'none' }}
-                    >
-                        Open in Global Chat
-                    </Button>
-                )}
+                <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                    {mode === 'embedded' && (
+                        <Button
+                            variant="outlined"
+                            startIcon={<OpenInNewIcon />}
+                            onClick={handleOpenGlobalChat}
+                            size="small"
+                            sx={{ color: '#0B57D0', borderColor: '#0B57D0', textTransform: 'none' }}
+                        >
+                            Open in Global Chat
+                        </Button>
+                    )}
+                    {headerAction}
+                </Box>
             </Box>
 
             {/* Chat Messages Area */}
