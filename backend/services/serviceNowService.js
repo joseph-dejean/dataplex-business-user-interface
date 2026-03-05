@@ -29,16 +29,19 @@ class ServiceNowService {
 
         try {
             const tableName = process.env.SERVICENOW_TABLE_NAME || 'u_access_request';
+            const prefix = process.env.SERVICENOW_FIELD_PREFIX || '';
+
+            const payload = {};
+            payload[`${prefix}u_requester`] = data.requesterEmail;
+            payload[`${prefix}u_asset_name`] = data.assetName;
+            payload[`${prefix}u_justification`] = data.message;
+            payload[`${prefix}u_correlation_id`] = data.requestId;
+            payload.short_description = `Dataplex Access: ${data.assetName}`;
+            payload.description = `User ${data.requesterEmail} requested access to ${data.assetName}.\nJustification: ${data.message}`;
+
             const response = await axios.post(
                 `${this.instanceUrl}/api/now/table/${tableName}`,
-                {
-                    u_requester: data.requesterEmail,
-                    u_asset_name: data.assetName,
-                    u_justification: data.message,
-                    u_correlation_id: data.requestId,
-                    short_description: `Dataplex Access: ${data.assetName}`,
-                    description: `User ${data.requesterEmail} requested access to ${data.assetName}.\nJustification: ${data.message}`
-                },
+                payload,
                 { auth: this.auth }
             );
 
