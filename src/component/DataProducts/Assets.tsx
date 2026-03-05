@@ -164,15 +164,33 @@ const Assets: React.FC<AssetsProps> = ({ entry, css, onAssetPreviewChange }) => 
     if (dataProductAssetsStatus === 'succeeded' && dataProductAssets.length > 0) {
       let a = dataProductAssets.map((item: any) => {
         if (!item.resource) return '';
-        const projectsPart = item.resource.split('projects/')[1];
+        const resource = item.resource;
+
+        // Extract system (e.g. 'bigquery') from //bigquery.googleapis.com/... or default to 'bigquery'
+        let system = 'bigquery';
+        if (resource.includes('//')) {
+          const parts = resource.split('//')[1].split('.');
+          if (parts.length > 0 && parts[0] !== 'googleapis') {
+            system = parts[0];
+          }
+        }
+
+        const projectsPart = resource.split('projects/')[1];
         if (!projectsPart) return '';
 
         const parts = projectsPart.split('/');
-        let p = parts.length >= 5 ?
-          `${parts[0]}.${parts[2]}.${parts[4]}` :
-          `${parts[0]}.${parts[2]}`;
-        let b = item.resource.includes('//') ? item.resource.split('projects/')[0].split('.').slice(-2, -1)[0]?.slice(2) || 'bigquery' : 'bigquery';
-        return b + ':' + p;
+        // Format: project.dataset[.table]
+        // parts[0]: project, parts[2]: dataset, parts[4]: table (if available)
+        let p = '';
+        if (parts.length >= 5) {
+          p = `${parts[0]}.${parts[2]}.${parts[4]}`;
+        } else if (parts.length >= 3) {
+          p = `${parts[0]}.${parts[2]}`;
+        } else {
+          p = parts[0];
+        }
+
+        return system + ':' + p;
       }).filter(Boolean);
 
       if (a.length === 0) {
