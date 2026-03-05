@@ -1,6 +1,6 @@
 import ChatInterface from '../GlobalChat/ChatInterface';
 import React, { useEffect, useState, useMemo, useCallback } from 'react'
-import { Box, Tab, Tabs, Tooltip, Skeleton } from '@mui/material'
+import { Box, Tab, Tabs, Tooltip, Skeleton, Typography } from '@mui/material'
 import { ArrowBack } from '@mui/icons-material'
 import { useNavigate } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'

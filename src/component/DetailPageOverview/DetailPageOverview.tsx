@@ -22,6 +22,7 @@ import Avatar from '../Avatar/Avatar';
 import ContentCopy from '../../assets/svg/content_copy.svg';
 import { useNotification } from '../../contexts/NotificationContext';
 import { InfoOutline } from '@mui/icons-material';
+import { getEntryType } from '../../utils/resourceUtils';
 
 /**
  * @file DetailPageOverview.tsx
