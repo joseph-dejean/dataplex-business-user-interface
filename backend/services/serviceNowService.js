@@ -27,17 +27,20 @@ class ServiceNowService {
             return { number: `MOCK-SN-${Date.now()}`, sys_id: 'mock' };
         }
 
+        const tableName = process.env.SERVICENOW_TABLE_NAME || 'x_1945757_datapl_0_access_request';
+        const prefix = process.env.SERVICENOW_FIELD_PREFIX || '';
+
+        const payload = {};
+        payload[`${prefix}requester`] = data.requesterEmail;
+        payload[`${prefix}asset_name`] = data.assetName;
+        payload[`${prefix}correlation_id`] = data.requestId;
+        payload.short_description = `Dataplex Access: ${data.assetName}`;
+        payload.description = `User ${data.requesterEmail} requested access to ${data.assetName}.\nJustification: ${data.message}`;
+
+        console.log('[ServiceNow] Creating ticket on table:', tableName);
+        console.log('[ServiceNow] Payload:', JSON.stringify(payload, null, 2));
+
         try {
-            const tableName = process.env.SERVICENOW_TABLE_NAME || 'x_1945757_datapl_0_access_request';
-            const prefix = process.env.SERVICENOW_FIELD_PREFIX || '';
-
-            const payload = {};
-            payload[`${prefix}requester`] = data.requesterEmail;
-            payload[`${prefix}asset_name`] = data.assetName;
-            payload[`${prefix}correlation_id`] = data.requestId;
-            payload.short_description = `Dataplex Access: ${data.assetName}`;
-            payload.description = `User ${data.requesterEmail} requested access to ${data.assetName}.\nJustification: ${data.message}`;
-
             const response = await axios.post(
                 `${this.instanceUrl}/api/now/table/${tableName}`,
                 payload,
@@ -53,7 +56,6 @@ class ServiceNowService {
             if (error.response) {
                 console.error('[ServiceNow] Status:', error.response.status);
                 console.error('[ServiceNow] Response:', JSON.stringify(error.response.data, null, 2));
-                console.error('[ServiceNow] Payload sent:', JSON.stringify(payload, null, 2));
             }
             return { number: 'ERROR-CREATING-SN', sys_id: 'error' };
         }
