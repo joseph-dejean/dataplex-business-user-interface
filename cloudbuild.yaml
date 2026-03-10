@@ -48,8 +48,8 @@ steps:
 # _ADMIN_EMAIL: your-admin@example.com
 # _CLIENT_ID: your-oauth-client-id
 # _CLIENT_SECRET: your-oauth-client-secret
-# _GCP_LOCATION: global (or your Dataplex location)
-# _GCP_REGION: global (or your Dataplex region)
+# _GCP_LOCATION: europe-west1 (must be a specific region, not multi-region like 'eu')
+# _GCP_REGION: europe-west1 (or your Dataplex region)
 
 options:
   machineType: 'E2_HIGHCPU_8'

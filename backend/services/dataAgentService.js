@@ -34,7 +34,7 @@ const getOrCreateDataAgent = async (tableReferences, systemInstruction, { projec
         }
 
         const project = projectId || process.env.GOOGLE_CLOUD_PROJECT_ID || process.env.GOOGLE_CLOUD_PROJECT;
-        const loc = location || process.env.GCP_LOCATION || 'us-central1';
+        const loc = location || process.env.GCP_LOCATION || 'europe-west1';
         const agentId = `agent_${tableId.substring(0, 40)}`;
 
         // Use provided token or get a new one

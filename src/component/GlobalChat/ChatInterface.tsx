@@ -119,7 +119,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ entry, mode = 'global', h
             let schema: any[] = [];
 
             // Try to extract schema from aspects
-            if (entry.aspects) {
+            if (entry?.aspects) {
                 const aspectKeys = Object.keys(entry.aspects);
                 const schemaKey = aspectKeys.find(key => key.includes('schema') || key.includes('Schema'));
 

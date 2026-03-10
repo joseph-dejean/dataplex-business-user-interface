@@ -165,8 +165,8 @@ app.post('/api/v1/chat', async (req, res) => {
     // If we can't extract BigQuery reference, fall back to metadata-only mode
     if (!projectId || !datasetId || !tableId) {
       // Fallback: Use Vertex AI for non-BigQuery tables or when FQN is not available
-      // Vertex AI requires a specific region (not multi-region like 'us'), default to us-central1
-      const vertexLocation = (process.env.GCP_LOCATION && process.env.GCP_LOCATION.includes('-')) ? process.env.GCP_LOCATION : 'us-central1';
+      // Vertex AI requires a specific region (not multi-region like 'us'), default to europe-west1
+      const vertexLocation = (process.env.GCP_LOCATION && process.env.GCP_LOCATION.includes('-')) ? process.env.GCP_LOCATION : 'europe-west1';
       const vertex_ai = new VertexAI({
         project: PROJECT_ID,
         location: vertexLocation
@@ -219,9 +219,9 @@ app.post('/api/v1/chat', async (req, res) => {
 
     // Use Conversational Analytics API with inline context for BigQuery tables
     const projectId_env = PROJECT_ID;
-    // CA API requires a specific region (not multi-region like 'us' or 'eu'), default to us-central1
-    const rawLocation = process.env.GCP_LOCATION || 'us-central1';
-    const location = rawLocation.includes('-') ? rawLocation : 'us-central1';
+    // CA API requires a specific region (not multi-region like 'us' or 'eu'), default to europe-west1
+    const rawLocation = process.env.GCP_LOCATION || 'europe-west1';
+    const location = rawLocation.includes('-') ? rawLocation : 'europe-west1';
 
     if (!projectId_env) {
       console.error('[CHAT] CRITICAL: No project ID found in environment variables!');
@@ -313,7 +313,7 @@ app.post('/api/v1/chat', async (req, res) => {
     if (tableReferences.length === 0) {
       const vertex_ai = new VertexAI({
         project: PROJECT_ID,
-        location: process.env.GCP_LOCATION || 'us-central1'
+        location: process.env.GCP_LOCATION || 'europe-west1'
       });
       const generativeModel = vertex_ai.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
@@ -551,14 +551,24 @@ app.post('/api/v1/chat', async (req, res) => {
                 // It has Vega-Lite-like properties, use as-is
                 vegaSpec = chartData;
               } else if (chartData.data && Array.isArray(chartData.data) && chartData.chartType) {
-                // Google returns raw data with chartType - build a Vega-Lite spec
+                // Google returns raw data with chartType - use smart column selection
                 console.log('DEBUG_BUILDING_VEGA_FROM_GOOGLE_DATA:', chartData.chartType);
                 const dataRows = chartData.data;
                 if (dataRows.length > 0) {
                   const columns = Object.keys(dataRows[0]);
-                  // Assume first column is category (x), second is value (y)
-                  const xField = columns[0];
-                  const yField = columns.length > 1 ? columns[1] : columns[0];
+
+                  // Smart column detection: find numeric vs categorical columns
+                  const numericCols = columns.filter(c => {
+                    const vals = dataRows.slice(0, 5).map(r => r[c]);
+                    return vals.every(v => v !== null && v !== undefined && !isNaN(parseFloat(v)));
+                  });
+                  const categoricalCols = columns.filter(c => !numericCols.includes(c));
+
+                  // Pick best X (categorical) and Y (numeric) based on data semantics
+                  const xField = categoricalCols.length > 0 ? categoricalCols[0] : columns[0];
+                  const yField = numericCols.length > 0
+                    ? (numericCols.find(c => c !== xField) || numericCols[0])
+                    : (columns.find(c => c !== xField) || columns[columns.length > 1 ? 1 : 0]);
 
                   // Determine mark type from Google's chartType
                   let markType = 'bar';
@@ -567,12 +577,15 @@ app.post('/api/v1/chat', async (req, res) => {
                   else if (chartData.chartType.toLowerCase().includes('scatter')) markType = 'point';
                   else if (chartData.chartType.toLowerCase().includes('area')) markType = 'area';
 
+                  // Detect if X is temporal (date-like)
+                  const xType = categoricalCols.includes(xField) ? 'nominal' : 'quantitative';
+
                   vegaSpec = {
                     "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
                     "data": { "values": dataRows },
                     "mark": markType,
                     "encoding": {
-                      "x": { "field": xField, "type": "nominal", "title": xField },
+                      "x": { "field": xField, "type": xType, "title": xField },
                       "y": { "field": yField, "type": "quantitative", "title": yField }
                     },
                     "width": 400,
@@ -755,32 +768,86 @@ app.post('/api/v1/chat', async (req, res) => {
     }
 
     // Auto-generate chart from data if API didn't return one
-    if (!finalChart && rawDataRows && rawDataRows.length > 0) {
+    // Uses Gemini to intelligently pick the right chart type and columns
+    if (!finalChart && rawDataRows && rawDataRows.length > 0 && rawDataRows.length <= 100) {
       try {
         const columns = Object.keys(rawDataRows[0]);
-        // Find a numeric column for Y axis and a text/id column for X axis
-        const numericCol = columns.find(c => {
-          const val = rawDataRows[0][c];
-          return !isNaN(parseFloat(val)) && columns.indexOf(c) > 0; // prefer non-first column
-        }) || columns.find(c => !isNaN(parseFloat(rawDataRows[0][c])));
-        const labelCol = columns.find(c => c !== numericCol) || columns[0];
+        const sampleRows = rawDataRows.slice(0, 5);
+        console.log('[SmartChart] Asking Gemini to generate chart spec...');
 
-        if (numericCol && labelCol && rawDataRows.length <= 50) {
-          finalChart = {
-            "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
-            "data": { "values": rawDataRows.map(r => ({ [labelCol]: r[labelCol], [numericCol]: parseFloat(r[numericCol]) || 0 })) },
-            "mark": "bar",
-            "encoding": {
-              "x": { "field": labelCol, "type": "nominal", "title": labelCol, "sort": "-y" },
-              "y": { "field": numericCol, "type": "quantitative", "title": numericCol }
-            },
-            "width": 500,
-            "height": 300
-          };
-          console.log('[AutoChart] Generated bar chart from data rows');
+        const chartGenLocation = (process.env.GCP_LOCATION && process.env.GCP_LOCATION.includes('-')) ? process.env.GCP_LOCATION : 'europe-west1';
+        const chartVertex = new VertexAI({ project: PROJECT_ID, location: chartGenLocation });
+        const chartModel = chartVertex.getGenerativeModel({
+          model: 'gemini-2.5-flash',
+          generationConfig: { temperature: 0.1, maxOutputTokens: 1024 }
+        });
+
+        const chartPrompt = `You are a data visualization expert. Given a user's question and query results, generate the best Vega-Lite v5 chart specification.
+
+User question: "${message}"
+Columns available: ${JSON.stringify(columns)}
+Sample data (first 5 rows): ${JSON.stringify(sampleRows)}
+Total rows: ${rawDataRows.length}
+
+Rules:
+1. Pick the most relevant columns for the visualization based on the user's question.
+2. Choose the best chart type (bar, line, point, arc, area) for this data.
+3. Use "nominal" for categorical text fields, "quantitative" for numbers, "temporal" for dates.
+4. Do NOT include the data values — I will inject them. Set "data": {"values": []} as placeholder.
+5. Set width to 500 and height to 300.
+6. Return ONLY a valid JSON object (no markdown, no explanation, no code fences).`;
+
+        const chartResult = await chartModel.generateContent(chartPrompt);
+        let chartSpecText = chartResult.response.candidates[0].content.parts[0].text.trim();
+
+        // Strip markdown code fences if present
+        if (chartSpecText.startsWith('```')) {
+          chartSpecText = chartSpecText.replace(/^```(?:json)?\s*/, '').replace(/\s*```$/, '');
         }
+
+        const firstBrace = chartSpecText.indexOf('{');
+        const lastBrace = chartSpecText.lastIndexOf('}');
+        if (firstBrace !== -1 && lastBrace !== -1) {
+          chartSpecText = chartSpecText.substring(firstBrace, lastBrace + 1);
+        }
+
+        const smartSpec = JSON.parse(chartSpecText);
+
+        // Inject actual data (Gemini only provided the spec structure)
+        smartSpec.data = { values: rawDataRows };
+        if (!smartSpec.$schema) {
+          smartSpec.$schema = "https://vega.github.io/schema/vega-lite/v5.json";
+        }
+
+        finalChart = smartSpec;
+        console.log('[SmartChart] Gemini-generated chart spec applied');
       } catch (chartErr) {
-        console.warn('[AutoChart] Failed to auto-generate chart:', chartErr.message);
+        console.warn('[SmartChart] Gemini chart generation failed, using simple fallback:', chartErr.message);
+        // Simple fallback: first text column = X, first numeric column = Y
+        try {
+          const columns = Object.keys(rawDataRows[0]);
+          const numericCol = columns.find(c => {
+            const val = rawDataRows[0][c];
+            return !isNaN(parseFloat(val)) && columns.indexOf(c) > 0;
+          }) || columns.find(c => !isNaN(parseFloat(rawDataRows[0][c])));
+          const labelCol = columns.find(c => c !== numericCol) || columns[0];
+
+          if (numericCol && labelCol) {
+            finalChart = {
+              "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+              "data": { "values": rawDataRows.map(r => ({ [labelCol]: r[labelCol], [numericCol]: parseFloat(r[numericCol]) || 0 })) },
+              "mark": "bar",
+              "encoding": {
+                "x": { "field": labelCol, "type": "nominal", "title": labelCol, "sort": "-y" },
+                "y": { "field": numericCol, "type": "quantitative", "title": numericCol }
+              },
+              "width": 500,
+              "height": 300
+            };
+          }
+        } catch (fallbackErr) {
+          console.warn('[SmartChart] Fallback also failed:', fallbackErr.message);
+        }
       }
     }
 
@@ -805,7 +872,7 @@ app.post('/api/v1/chat', async (req, res) => {
     if (rawDataRows && rawDataRows.length > 0 && fullResponseText.length < 200) {
       try {
         console.log(`[Gemini 3] Synthesizing ${rawDataRows.length} rows of data...`);
-        const synthesisLocation = (process.env.GCP_LOCATION && process.env.GCP_LOCATION.includes('-')) ? process.env.GCP_LOCATION : 'us-central1';
+        const synthesisLocation = (process.env.GCP_LOCATION && process.env.GCP_LOCATION.includes('-')) ? process.env.GCP_LOCATION : 'europe-west1';
         const synthesizerVertex = new VertexAI({
           project: PROJECT_ID,
           location: synthesisLocation
@@ -860,8 +927,8 @@ app.post('/api/v1/chat', async (req, res) => {
     // This ensures the user always gets an answer.
     try {
       console.log('Attempting fallback to Gemini 1.5 Flash...');
-      // Vertex AI requires a specific region (not multi-region like 'us'), default to us-central1
-      const fallbackLocation = (process.env.GCP_LOCATION && process.env.GCP_LOCATION.includes('-')) ? process.env.GCP_LOCATION : 'us-central1';
+      // Vertex AI requires a specific region (not multi-region like 'us'), default to europe-west1
+      const fallbackLocation = (process.env.GCP_LOCATION && process.env.GCP_LOCATION.includes('-')) ? process.env.GCP_LOCATION : 'europe-west1';
       const fallbackVertex = new VertexAI({
         project: PROJECT_ID,
         location: fallbackLocation
@@ -959,7 +1026,7 @@ app.post('/api/v1/ai-search', async (req, res) => {
     // Step 1: Use Gemini to understand the query and generate search terms
     const vertex_ai = new VertexAI({
       project: projectId,
-      location: process.env.GCP_LOCATION || 'us-central1'
+      location: process.env.GCP_LOCATION || 'europe-west1'
     });
     const generativeModel = vertex_ai.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
@@ -1598,7 +1665,7 @@ app.post('/api/v1/batch-aspects', async (req, res) => {
 app.get('/api/v1/aspect-types', async (req, res) => {
   try {
     const projectId = PROJECT_ID;
-    const configuredLocation = process.env.GCP_LOCATION || 'us-central1';
+    const configuredLocation = process.env.GCP_LOCATION || 'europe-west1';
 
     if (!projectId) {
       console.error('[ASPECT-TYPES] No project ID configured');
@@ -1665,7 +1732,7 @@ app.get('/api/v1/aspect-types', async (req, res) => {
 app.get('/api/v1/entry-list', async (req, res) => {
   try {
     const projectId = PROJECT_ID;
-    const configuredLocation = process.env.GCP_LOCATION || 'us-central1';
+    const configuredLocation = process.env.GCP_LOCATION || 'europe-west1';
 
     if (!projectId) {
       console.error('[ENTRY-LIST] No project ID configured');
@@ -1727,7 +1794,7 @@ app.get('/api/v1/entry-list', async (req, res) => {
 app.get('/api/v1/entry-types', async (req, res) => {
   try {
     const projectId = PROJECT_ID;
-    const configuredLocation = process.env.GCP_LOCATION || 'us-central1';
+    const configuredLocation = process.env.GCP_LOCATION || 'europe-west1';
 
     if (!projectId) {
       return res.status(500).json({ message: 'Server Configuration Error: GOOGLE_CLOUD_PROJECT_ID must be set.' });
@@ -2205,7 +2272,7 @@ app.get('/api/v1/projects', async (req, res) => {
 app.get('/api/v1/tag-templates', async (req, res) => {
   try {
     const projectId = PROJECT_ID;
-    const location = process.env.GCP_LOCATION || 'us-central1';
+    const location = process.env.GCP_LOCATION || 'europe-west1';
 
     if (!projectId || !location) {
       return res.status(500).json({ message: 'Server Configuration Error: GOOGLE_CLOUD_PROJECT_ID and GCP_LOCATION must be set in the .env file.' });
@@ -2342,7 +2409,7 @@ app.get('/api/v1/get-aspect', async (req, res) => {
 app.get('/api/v1/app-configs', async (req, res) => {
   try {
     const projectId = PROJECT_ID;
-    const location = process.env.GCP_LOCATION || 'us-central1';
+    const location = process.env.GCP_LOCATION || 'europe-west1';
     // ADC Auth
     const auth = new AdcGoogleAuth();
 
@@ -2560,7 +2627,7 @@ app.post('/api/v1/send-feedback', async (req, res) => {
 app.get('/api/v1/get-projects', async (req, res) => {
   try {
     const projectId = PROJECT_ID;
-    const location = process.env.GCP_LOCATION || 'us-central1';
+    const location = process.env.GCP_LOCATION || 'europe-west1';
 
     console.log(`[GET-PROJECTS] Using Project: ${projectId}, Location: ${location}`);
 
@@ -2602,7 +2669,7 @@ app.get('/api/v1/data-scans', async (req, res) => {
   const { project } = req.query;
   try {
     const projectId = (project != '' && project != null && project != "undefined") ? project : (PROJECT_ID);
-    const location = process.env.GCP_LOCATION || 'us-central1';
+    const location = process.env.GCP_LOCATION || 'europe-west1';
 
     if (!projectId || !location) {
       return res.status(500).json({ message: 'Server Configuration Error: GOOGLE_CLOUD_PROJECT_ID and GCP_LOCATION must be set in the .env file.' });
@@ -2640,7 +2707,7 @@ app.get('/api/v1/data-quality-scan-jobs/:scanId', async (req, res) => {
 
   try {
     const projectId = PROJECT_ID;
-    const location = process.env.GCP_LOCATION || 'us-central1';
+    const location = process.env.GCP_LOCATION || 'europe-west1';
 
     if (!projectId || !location) {
       return res.status(500).json({ message: 'Server Configuration Error: GOOGLE_CLOUD_PROJECT_ID and GCP_LOCATION must be set in the .env file.' });
@@ -2824,7 +2891,7 @@ app.post('/api/batch-data-quality-scan-jobs', async (req, res) => {
     console.log(`Fetching jobs for a batch of ${scanIds.length} data quality scans.`);
 
     const promises = scanIds.map(scanId => {
-      const parent = `projects/${PROJECT_ID}/locations/${process.env.GCP_LOCATION || 'us-central1'}/dataScans/${scanId}`;
+      const parent = `projects/${PROJECT_ID}/locations/${process.env.GCP_LOCATION || 'europe-west1'}/dataScans/${scanId}`;
       return dataplexDataScanClientv1.listDataScanJobs({ parent });
     });
 
@@ -3349,7 +3416,7 @@ app.get('/api/v1/lineage', async (req, res) => {
     }
 
     const projectId = PROJECT_ID;
-    const location = process.env.GCP_LOCATION || 'us-central1';
+    const location = process.env.GCP_LOCATION || 'europe-west1';
 
     // Helper: Convert Dataplex FQN to Lineage Entity ID
     // Input: strings like "bigquery:proj.ds.tbl" or "proj.ds.tbl"
