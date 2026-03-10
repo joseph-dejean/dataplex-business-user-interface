@@ -28,14 +28,13 @@ class ServiceNowService {
         }
 
         try {
-            const tableName = process.env.SERVICENOW_TABLE_NAME || 'u_access_request';
+            const tableName = process.env.SERVICENOW_TABLE_NAME || 'x_1945757_datapl_0_access_request';
             const prefix = process.env.SERVICENOW_FIELD_PREFIX || '';
 
             const payload = {};
-            payload[`${prefix}u_requester`] = data.requesterEmail;
-            payload[`${prefix}u_asset_name`] = data.assetName;
-            payload[`${prefix}u_justification`] = data.message;
-            payload[`${prefix}u_correlation_id`] = data.requestId;
+            payload[`${prefix}requester`] = data.requesterEmail;
+            payload[`${prefix}asset_name`] = data.assetName;
+            payload[`${prefix}correlation_id`] = data.requestId;
             payload.short_description = `Dataplex Access: ${data.assetName}`;
             payload.description = `User ${data.requesterEmail} requested access to ${data.assetName}.\nJustification: ${data.message}`;
 
@@ -51,7 +50,11 @@ class ServiceNowService {
             };
         } catch (error) {
             console.error('[ServiceNow] Error creating ticket:', error.message);
-            // Return a mock or throw? For now let's return a placeholder so the flow doesn't break
+            if (error.response) {
+                console.error('[ServiceNow] Status:', error.response.status);
+                console.error('[ServiceNow] Response:', JSON.stringify(error.response.data, null, 2));
+                console.error('[ServiceNow] Payload sent:', JSON.stringify(payload, null, 2));
+            }
             return { number: 'ERROR-CREATING-SN', sys_id: 'error' };
         }
     }
@@ -63,7 +66,7 @@ class ServiceNowService {
         if (!this.isEnabled() || sysId === 'mock' || sysId === 'error') return;
 
         try {
-            const tableName = process.env.SERVICENOW_TABLE_NAME || 'u_access_request';
+            const tableName = process.env.SERVICENOW_TABLE_NAME || 'x_1945757_datapl_0_access_request';
             await axios.put(
                 `${this.instanceUrl}/api/now/table/${tableName}/${sysId}`,
                 {
