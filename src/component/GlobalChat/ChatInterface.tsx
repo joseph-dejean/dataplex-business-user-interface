@@ -73,7 +73,7 @@ interface Message {
     data?: any[]; // Raw data rows from API
 }
 
-const ChatInterface: React.FC<ChatInterfaceProps> = ({ entry, mode = 'global', headerAction }) => {
+const ChatInterface: React.FC<ChatInterfaceProps> = ({ entry, mode = 'global', headerAction, initialTables }) => {
     const { user } = useAuth();
     const navigate = useNavigate();
     const [input, setInput] = useState('');
@@ -115,49 +115,76 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ entry, mode = 'global', h
         try {
             let contextData: any;
 
-            // Single table context extraction
-            let schema: any[] = [];
+            // Determine if we're in multi-table mode (Global Chat with initialTables)
+            const activeTables = initialTables && initialTables.length > 0 ? initialTables : null;
+            const isMultiTable = activeTables && activeTables.length > 0;
 
-            // Try to extract schema from aspects
-            if (entry?.aspects) {
-                const aspectKeys = Object.keys(entry.aspects);
-                const schemaKey = aspectKeys.find(key => key.includes('schema') || key.includes('Schema'));
+            if (isMultiTable) {
+                // Multi-table mode: build context from selected tables
+                const tablesContext = activeTables.map((t: any) => ({
+                    name: t.entrySource?.displayName || t.displayName || t.name?.split('/').pop() || 'Unknown Table',
+                    fullyQualifiedName: t.fullyQualifiedName || t.name || '',
+                    type: t.entryType || t.type || 'Table',
+                    description: t.entrySource?.description || t.description || ''
+                }));
 
-                if (schemaKey) {
-                    const schemaAspect = entry.aspects[schemaKey];
-                    // Handle different schema formats
-                    if (schemaAspect?.data?.fields) {
-                        if (schemaAspect.data.fields.fields?.listValue?.values) {
-                            schema = schemaAspect.data.fields.fields.listValue.values;
-                        } else if (Array.isArray(schemaAspect.data.fields)) {
-                            schema = schemaAspect.data.fields;
-                        } else if (schemaAspect.data.fields.fields) {
-                            schema = Array.isArray(schemaAspect.data.fields.fields)
-                                ? schemaAspect.data.fields.fields
-                                : Object.values(schemaAspect.data.fields.fields);
+                const primaryTable = activeTables[0];
+                const primaryName = primaryTable.entrySource?.displayName || primaryTable.displayName || primaryTable.name?.split('/').pop() || 'Selected Tables';
+                const primaryFqn = primaryTable.fullyQualifiedName || primaryTable.name || '';
+
+                contextData = {
+                    name: activeTables.length > 1 ? `${primaryName} + ${activeTables.length - 1} related tables` : primaryName,
+                    description: primaryTable.entrySource?.description || primaryTable.description || "Multi-table conversation",
+                    isDataProduct: true, // Enable multi-table handling in backend
+                    tables: tablesContext,
+                    fullyQualifiedName: primaryFqn,
+                    entryType: 'MULTI_TABLE',
+                    conversationId: conversationId
+                };
+            } else {
+                // Single table context extraction
+                let schema: any[] = [];
+
+                // Try to extract schema from aspects
+                if (entry?.aspects) {
+                    const aspectKeys = Object.keys(entry.aspects);
+                    const schemaKey = aspectKeys.find(key => key.includes('schema') || key.includes('Schema'));
+
+                    if (schemaKey) {
+                        const schemaAspect = entry.aspects[schemaKey];
+                        if (schemaAspect?.data?.fields) {
+                            if (schemaAspect.data.fields.fields?.listValue?.values) {
+                                schema = schemaAspect.data.fields.fields.listValue.values;
+                            } else if (Array.isArray(schemaAspect.data.fields)) {
+                                schema = schemaAspect.data.fields;
+                            } else if (schemaAspect.data.fields.fields) {
+                                schema = Array.isArray(schemaAspect.data.fields.fields)
+                                    ? schemaAspect.data.fields.fields
+                                    : Object.values(schemaAspect.data.fields.fields);
+                            }
                         }
                     }
                 }
-            }
 
-            // Format schema for better AI understanding
-            const formattedSchema = schema.map((field: any) => {
-                if (typeof field === 'string') return field;
-                return {
-                    name: field.name || field.stringValue || field.displayName || 'unknown',
-                    type: field.type || field.dataType || 'unknown',
-                    description: field.description || ''
+                // Format schema for better AI understanding
+                const formattedSchema = schema.map((field: any) => {
+                    if (typeof field === 'string') return field;
+                    return {
+                        name: field.name || field.stringValue || field.displayName || 'unknown',
+                        type: field.type || field.dataType || 'unknown',
+                        description: field.description || ''
+                    };
+                });
+
+                contextData = {
+                    name: entry?.entrySource?.displayName || entry?.displayName || entry?.name || 'Unknown',
+                    description: entry?.entrySource?.description || entry?.description || "No description available.",
+                    schema: formattedSchema,
+                    fullyQualifiedName: entry?.fullyQualifiedName || entry?.name || '',
+                    entryType: entry?.entryType || entry?.entrySource?.system || 'Unknown',
+                    conversationId: conversationId
                 };
-            });
-
-            contextData = {
-                name: entry?.entrySource?.displayName || entry?.displayName || entry?.name || 'Unknown',
-                description: entry?.entrySource?.description || entry?.description || "No description available.",
-                schema: formattedSchema,
-                fullyQualifiedName: entry?.fullyQualifiedName || entry?.name || '',
-                entryType: entry?.entryType || entry?.entrySource?.system || 'Unknown',
-                conversationId: conversationId // Stateful mode
-            };
+            }
 
             // 2. Call the Backend
             const res = await axios.post(`${URLS.API_URL}${URLS.CHAT}`, {
