@@ -144,8 +144,6 @@ const AccessGroup: React.FC<AccessGroupProps> = ({ entry, css }) => {
 
   const { dataProductAssets, dataProductAssetsStatus } = useSelector((state: any) => state.dataProducts);
 
-  const number = entry?.entryType?.split('/')[1];
-
   useEffect(() => {
     if (dataProductAssetsStatus === 'succeeded') {
       // schema = <Schema entry={entry} css={{width:"100%"}} />;
@@ -178,7 +176,10 @@ const AccessGroup: React.FC<AccessGroupProps> = ({ entry, css }) => {
     }
   }, [dataProductAssets]);
 
-  let accessGroups = entry.aspects?.[`${number}.global.data-product`]?.data?.accessGroups || entry.aspects?.[`${number}.global.data-product`]?.data?.fields?.accessGroups?.listValue?.values || [];
+  // Find the data-product aspect using suffix matching (works with any prefix)
+  const dataProductAspectKey = entry.aspects ? Object.keys(entry.aspects).find(k => k.endsWith('.global.data-product') || k.endsWith('data-product')) : null;
+  const dataProductAspect = dataProductAspectKey ? entry.aspects[dataProductAspectKey] : null;
+  let accessGroups = dataProductAspect?.data?.accessGroups || dataProductAspect?.data?.fields?.accessGroups?.listValue?.values || dataProductAspect?.accessGroups || [];
   //let usage = entry.aspects[`${number}.global.usage`]?.data.fields || {};
 
   // Always compute memoized helpers at top-level (avoid conditional hooks)

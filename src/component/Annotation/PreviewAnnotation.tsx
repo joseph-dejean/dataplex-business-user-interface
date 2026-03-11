@@ -75,29 +75,27 @@ const PreviewAnnotation: React.FC<PreviewAnnotationProps> = ({
 }) => {
   
 
-  const number = entry?.entryType?.split('/').length > 0 ? entry?.entryType.split('/')[1] : '0';
-
-  const globalAspectsToExclude = [
-    `${number}.global.refresh-cadence`
-  ];
-  
-
   const aspects = { ...entry?.aspects };
 
-  // Remove global aspects that should be excluded as it has some other display components
-  globalAspectsToExclude.forEach(key => {
-    delete aspects?.[key];
-  });
-  
-  //const number = entry?.entryType?.split('/').length > 0 ? entry?.entryType.split('/')[1] : '0';
+  // Remove aspects that have dedicated display components (Contract tab, Overview, etc.)
+  // Use suffix matching to work with any prefix (project number, dataplex-types, etc.)
   const keys = Object.keys(aspects ?? {});
 
+  // Remove refresh-cadence from aspects since it's shown in the Contract tab
+  keys.forEach(key => {
+    if (key.endsWith('.global.refresh-cadence') || key.endsWith('refresh-cadence')) {
+      delete aspects[key];
+    }
+  });
+
+  const remainingKeys = Object.keys(aspects ?? {});
+
   // Filter out global aspects to check if there are any displayable aspects
-  const displayableKeys = keys.filter((key) => {
-    const isSchema = key === `${number}.global.schema`;
+  const displayableKeys = remainingKeys.filter((key) => {
+    const isSchema = key.endsWith('.global.schema');
     const isOverview = key.endsWith('.global.overview');
-    const isContacts = key === `${number}.global.contacts`;
-    const isUsage = key === `${number}.global.usage`;
+    const isContacts = key.endsWith('.global.contacts');
+    const isUsage = key.endsWith('.global.usage');
     const isGlossaryTermAspect = key.endsWith('.global.glossary-term-aspect');
     return !(isSchema || isOverview || isContacts || isUsage || isGlossaryTermAspect);
   });
@@ -385,18 +383,20 @@ const PreviewAnnotation: React.FC<PreviewAnnotationProps> = ({
   return (
     <>
       <div style={{ fontSize: "0.75rem", border: "1px solid #E0E0E0", display: "flex", flexDirection: "column", flex: "1 1 auto", overflow: "hidden", borderRadius: "8px", ...css }}>
-        {keys.map((key, index) => {
-          const isSchema = key === `${number}.global.schema`;
+        {remainingKeys.map((key, index) => {
+          const isSchema = key.endsWith('.global.schema');
           const isOverview = key.endsWith('.global.overview');
-          const isContacts = key === `${number}.global.contacts`;
-          const isUsage = key === `${number}.global.usage`;
+          const isContacts = key.endsWith('.global.contacts');
+          const isUsage = key.endsWith('.global.usage');
           const isGlossaryTermAspect = key.endsWith('.global.glossary-term-aspect');
 
           if (isSchema || isOverview || isContacts || isUsage || isGlossaryTermAspect) {
             return null;
           }
 
-          const rawData = aspects[key].data;
+          const aspectObj = aspects[key];
+          // Handle both formats: { data: { fields: {...} } } and { aspectType: "...", field1: "...", ... }
+          const rawData = aspectObj?.data || aspectObj;
           
           const hasFields = rawData && rawData.fields && Object.keys(rawData.fields).length > 0;
           let hasContent = false;
@@ -419,7 +419,9 @@ const PreviewAnnotation: React.FC<PreviewAnnotationProps> = ({
 
              hasContent = validFieldKeys.length > 0;
           }
-          const aspectName = aspects[key].aspectType.split('/').pop().replaceAll('-', ' ');
+          // Derive aspect display name from aspectType or fall back to the key itself
+          const aspectType = aspectObj?.aspectType || key;
+          const aspectName = (aspectType.includes('/') ? aspectType.split('/').pop() : aspectType.split('.').pop() || key).replaceAll('-', ' ').replaceAll('_', ' ');
 
           const headerContent = (
             <div style={{

@@ -132,12 +132,40 @@ const Contract: React.FC<ContractProps> = ({ entry, css }) => {
 
   if (!entry) return null;
 
+  // Debug: log what we have to work with
+  console.log('[Contract] entry.entryType:', entry.entryType);
+  console.log('[Contract] entry.aspects keys:', entry.aspects ? Object.keys(entry.aspects) : 'no aspects');
+
+  // Try to find the refresh-cadence aspect using multiple strategies
+  let refreshCadenceAspect = null;
+
+  // Strategy 1: Derive prefix from entryType (works for lookupEntry responses)
   const type = entry.entryType || '';
   const typeParts = type.split('/');
   const typePrefix = typeParts.length > 1 ? typeParts[1] : 'dataplex-types';
+  refreshCadenceAspect = entry.aspects?.[`${typePrefix}.global.refresh-cadence`]?.data;
+
+  // Strategy 2: Search all aspect keys for one ending with "refresh-cadence" (works for direct API)
+  if (!refreshCadenceAspect && entry.aspects) {
+    const matchingKey = Object.keys(entry.aspects).find(key => key.endsWith('refresh-cadence'));
+    if (matchingKey) {
+      console.log('[Contract] Found refresh-cadence via key search:', matchingKey);
+      const aspect = entry.aspects[matchingKey];
+      // Handle both formats: { data: {...} } and direct data object
+      refreshCadenceAspect = aspect?.data ?? aspect;
+    }
+  }
+
+  // If the data is in protobuf Struct format (has a 'fields' wrapper), unwrap it
+  if (refreshCadenceAspect?.fields && !refreshCadenceAspect.kind) {
+    console.log('[Contract] Unwrapping protobuf Struct fields');
+    refreshCadenceAspect = refreshCadenceAspect.fields;
+  }
+
+  console.log('[Contract] Final refreshCadenceAspect:', refreshCadenceAspect);
 
   let contracts = {
-    "refresh-cadence": entry.aspects?.[`${typePrefix}.global.refresh-cadence`]?.data || []
+    "refresh-cadence": refreshCadenceAspect || []
   };
   //let usage = entry.aspects[`${number}.global.usage`]?.data.fields || {};
 
@@ -205,10 +233,14 @@ const Contract: React.FC<ContractProps> = ({ entry, css }) => {
 
                       <table>
                         <tbody>
-                          {Object.entries(contracts['refresh-cadence']).map(([key1, value]) => (
+                          {Object.entries(contracts['refresh-cadence']).map(([key1, value]: [string, any]) => (
                             <tr key={key1} style={{ padding: "15px", fontSize: "12px" }}>
-                              <td style={{ fontWeight: "400", textTransform: 'capitalize', color: '#575757', fontSize: "14px" }}>{key1}</td>
-                              <td style={{ paddingLeft: "20px" }}>{`${value}`}</td>
+                              <td style={{ fontWeight: "400", textTransform: 'capitalize', color: '#575757', fontSize: "14px" }}>{key1.replace(/_/g, ' ')}</td>
+                              <td style={{ paddingLeft: "20px" }}>
+                                {value && typeof value === 'object' && value.kind
+                                  ? <FieldRenderer field={value} />
+                                  : `${value}`}
+                              </td>
                             </tr>
                           ))}
                         </tbody>

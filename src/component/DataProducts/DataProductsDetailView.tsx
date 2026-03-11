@@ -149,15 +149,15 @@ const DataProductsDetailView: React.FC<DataProductsDetailViewProps> = ({ onReque
 
   const handleAnnotationExpandAll = () => {
     if (selectedDataProductDetails?.aspects) {
-      const number = getEntryType(selectedDataProductDetails.name, '/');
       const annotationKeys = Object.keys(selectedDataProductDetails.aspects)
         .filter(key =>
-          key !== `${number}.global.schema` &&
-          key !== `${number}.global.overview` &&
-          key !== `${number}.global.contacts` &&
-          key !== `${number}.global.usage`
+          !key.endsWith('.global.schema') &&
+          !key.endsWith('.global.overview') &&
+          !key.endsWith('.global.contacts') &&
+          !key.endsWith('.global.usage') &&
+          !key.endsWith('.global.refresh-cadence')
         )
-        .filter(key => hasValidAnnotationData(selectedDataProductDetails.aspects![key])); // Only expand those with data
+        .filter(key => hasValidAnnotationData(selectedDataProductDetails.aspects![key]));
       setExpandedAnnotations(new Set(annotationKeys));
     }
   };

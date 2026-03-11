@@ -87,6 +87,7 @@ const fetchRelationshipsFromCatalog = async (billingProject, location, rootTable
     const relationships = [];
     const visited = new Set();
     const queue = [];
+    let scansTriggered = 0; // Track how many DataScans we had to trigger
 
     // Initialize queue with degree 0
     for (const fqn of rootTablesFqns) {
@@ -167,21 +168,24 @@ const fetchRelationshipsFromCatalog = async (billingProject, location, rootTable
                 }
             } else {
                 // Documentation aspect missing, trigger scan
+                console.log(`[RELATIONSHIPS] No documentation aspect for ${current.table}, triggering DataScan...`);
                 await triggerDocumentationScan(billingProject, location, current.project, current.dataset, current.table);
+                scansTriggered++;
             }
 
         } catch (err) {
             if (err.code === 5 || (err.message && err.message.includes('NOT_FOUND'))) {
-                // Table doesn't exist in catalog or name schema might be different. 
+                // Table doesn't exist in catalog or name schema might be different.
                 // We'll still try to trigger a scan for it since Dataplex DataScans can run on native BQ tables.
                 await triggerDocumentationScan(billingProject, location, current.project, current.dataset, current.table);
+                scansTriggered++;
             } else {
                 console.warn(`[RELATIONSHIPS] Entry Fetch error for ${entryName}:`, err.message);
             }
         }
     }
 
-    return relationships;
+    return { relationships, scansTriggered };
 };
 
 /**

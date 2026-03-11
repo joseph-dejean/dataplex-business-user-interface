@@ -3796,17 +3796,25 @@ app.get('/api/v1/dataset-relationships', async (req, res) => {
     let location = process.env.GCP_LOCATION || 'eu'; // Assuming eu based on user's earlier test or config
     const billingProject = PROJECT_ID; // Billing project for API calls
 
-    const relationships = await datasetRelationshipService.fetchRelationshipsFromCatalog(
+    const result = await datasetRelationshipService.fetchRelationshipsFromCatalog(
       billingProject,
       location,
       rootTableFqns,
       3 // max degree
     );
 
-    console.log(`[RELATIONSHIPS] Total ${relationships.length} edges found via Catalog API`);
+    const relationships = result.relationships;
+    const scansTriggered = result.scansTriggered || 0;
 
-    // Cache the results
-    await datasetRelationshipService.cacheRelationships(project, dataset, relationships, searchResults.length);
+    console.log(`[RELATIONSHIPS] Total ${relationships.length} edges found via Catalog API, ${scansTriggered} scans triggered`);
+
+    // Only cache if no scans were triggered (meaning all documentation aspects existed)
+    // If scans were triggered, the results are incomplete — don't cache so next request retries
+    if (scansTriggered === 0) {
+      await datasetRelationshipService.cacheRelationships(project, dataset, relationships, searchResults.length);
+    } else {
+      console.log(`[RELATIONSHIPS] Skipping cache — ${scansTriggered} DataScans were triggered. Results will be complete after scans finish.`);
+    }
 
     // Build unique nodes from edges + root tables
     const nodeSet = new Set();
@@ -3825,6 +3833,8 @@ app.get('/api/v1/dataset-relationships', async (req, res) => {
       edges: relationships,
       source: 'catalog_documentation',
       tableCount: searchResults.length,
+      scansTriggered, // Tell frontend if scans are pending
+      message: scansTriggered > 0 ? `${scansTriggered} DataScans triggered. Relationships will appear after scans complete (usually a few minutes). Refresh to check.` : undefined,
       project,
       dataset
     });
