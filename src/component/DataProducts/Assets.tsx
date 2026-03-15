@@ -3,8 +3,11 @@ import {
   Typography,
   Box,
   Paper,
-  Skeleton
+  Skeleton,
+  Button,
+  Alert
 } from '@mui/material';
+import { LockOutlined } from '@mui/icons-material';
 import { useSelector } from 'react-redux';
 import DataProductAssets from './DataProductAssets';
 import { useAuth } from '../../auth/AuthProvider';
@@ -131,10 +134,11 @@ interface AssetsProps {
   entry: any;
   css?: React.CSSProperties; // Optional CSS properties for the button
   onAssetPreviewChange?: (data: any) => void;
+  onRequestAccess?: (assetInfo: any) => void;
 }
 
 // Tab component
-const Assets: React.FC<AssetsProps> = ({ entry, css, onAssetPreviewChange }) => {
+const Assets: React.FC<AssetsProps> = ({ entry, css, onAssetPreviewChange, onRequestAccess }) => {
 
 
   //const dispatch = useDispatch<AppDispatch>();
@@ -142,6 +146,7 @@ const Assets: React.FC<AssetsProps> = ({ entry, css, onAssetPreviewChange }) => 
   const [dataProductsAssetsList, setDataProductsAssetsList] = useState([]);
   const [assetListLoader, setAssetListLoader] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [accessDenied, setAccessDenied] = useState(false);
   const { user } = useAuth();
   const id_token = user?.token;
   // const [assetPreviewData, setAssetPreviewData] = useState<any | null>(null);
@@ -149,6 +154,62 @@ const Assets: React.FC<AssetsProps> = ({ entry, css, onAssetPreviewChange }) => 
 
 
   const number = entry?.entryType?.split('/')[1];
+
+  /**
+   * Build fallback asset entries from raw dataProductAssets when searchEntries fails (e.g., no access).
+   * This allows users to see which assets exist and request access to them.
+   */
+  const buildFallbackAssets = (rawAssets: any[]) => {
+    return rawAssets
+      .filter((item: any) => item.resource)
+      .map((item: any) => {
+        const resource = item.resource;
+        // Extract a human-readable name from the resource path
+        // e.g., //bigquery.googleapis.com/projects/proj/datasets/ds/tables/tbl -> ds.tbl
+        const projectsPart = resource.split('projects/')[1];
+        if (!projectsPart) return null;
+
+        const parts = projectsPart.split('/');
+        let displayName = '';
+        let system = 'bigquery';
+        let entryType = 'TABLE';
+
+        if (resource.includes('//')) {
+          const svcParts = resource.split('//')[1].split('.');
+          if (svcParts.length > 0 && svcParts[0] !== 'googleapis') {
+            system = svcParts[0];
+          }
+        }
+
+        if (parts.length >= 5) {
+          // projects/{p}/datasets/{d}/tables/{t}
+          displayName = `${parts[2]}.${parts[4]}`;
+          entryType = parts[3] === 'tables' ? 'TABLE' : parts[3].toUpperCase();
+        } else if (parts.length >= 3) {
+          displayName = parts[2];
+          entryType = 'DATASET';
+        } else {
+          displayName = parts[0];
+        }
+
+        return {
+          dataplexEntry: {
+            name: resource,
+            entrySource: {
+              displayName: displayName,
+              description: item.description || '',
+              system: system.toUpperCase(),
+              resource: resource,
+            },
+            entryType: entryType,
+            fullyQualifiedName: `${system}:${projectsPart.split('/').filter((_: string, i: number) => i % 2 === 1).join('.')}`,
+          },
+          linkedResource: resource,
+          _accessDenied: true, // marker for locked state
+        };
+      })
+      .filter(Boolean);
+  };
 
   useEffect(() => {
     console.log('--- FRONTEND_ASSETS_VERSION: 3.3 ---');
@@ -224,11 +285,12 @@ const Assets: React.FC<AssetsProps> = ({ entry, css, onAssetPreviewChange }) => 
         }
       ).then((response: any) => {
         console.log('fet Ass', response.data);
-        //response.data.results.map()
+        setAccessDenied(false);
         setDataProductsAssetsList(response.data.results || []);
         setAssetListLoader(true);
       }).catch((error: any) => {
         console.error('Error fetching data product assets details:', error);
+        const isPermissionError = error?.response?.status === 403 || error?.response?.status === 401;
         // Try with 'global' location as fallback
         if (location !== 'global') {
           console.log('[Assets] Retrying with global location...');
@@ -243,13 +305,28 @@ const Assets: React.FC<AssetsProps> = ({ entry, css, onAssetPreviewChange }) => 
             }
           ).then((response: any) => {
             console.log('[Assets] Fallback succeeded:', response.data);
+            setAccessDenied(false);
             setDataProductsAssetsList(response.data.results || []);
             setAssetListLoader(true);
           }).catch((err: any) => {
             console.error('[Assets] Fallback also failed:', err);
+            // Show fallback locked assets so user can still see what's in the data product
+            const fallback = buildFallbackAssets(dataProductAssets);
+            if (fallback.length > 0) {
+              setAccessDenied(true);
+              setDataProductsAssetsList(fallback as any);
+            }
             setAssetListLoader(true);
           });
         } else {
+          // Show fallback locked assets
+          if (isPermissionError || error?.response?.status >= 400) {
+            const fallback = buildFallbackAssets(dataProductAssets);
+            if (fallback.length > 0) {
+              setAccessDenied(true);
+              setDataProductsAssetsList(fallback as any);
+            }
+          }
           setAssetListLoader(true);
         }
       });
@@ -480,38 +557,131 @@ const Assets: React.FC<AssetsProps> = ({ entry, css, onAssetPreviewChange }) => 
             {dataProductAssetsStatus === 'succeeded' && dataProductAssets.length === 0 && assetListLoader && (
               <Typography sx={{ fontSize: '14px', color: '#575757', marginTop: 40 }}>No data product assets found.</Typography>
             )}
-            {dataProductAssetsStatus === 'succeeded' && dataProductAssets.length > 0 && assetListLoader && (
-              // dataProductsAssetsList.map((resource: any, index: number) => {
-              //     console.log("Resource in Data Product Assets:", resource);
-              //     //const isSelected = previewData && previewData.name === resource.dataplexEntry.name;
-              //     //const disableHoverEffect = selectedIndex !== -1 && selectedIndex === index - 1;
-              //     //const hideTopBorder = hoveredIndex === index - 1;
-              //     return (
-              //         <Box
-              //         key={resource.dataplexEntry.name}
-              //         onClick={() => {}}
-              //         onMouseEnter={() => {}}
-              //         onMouseLeave={() => {}}
-              //         sx={{
-              //             backgroundColor: '#ffffff',
-              //             cursor: 'pointer',
-              //             borderRadius: '8px',
-              //             padding: '0px',
-              //             marginLeft: '-0.5rem'
-              //         }}
-              //         >
-              //                 <SearchEntriesCard
-              //                     index={index}
-              //                     entry={resource.dataplexEntry}
-              //                     hideTopBorderOnHover={true}
-              //                     sx={{ backgroundColor: 'transparent', borderRadius: true ? '8px' : '0px', marginTop: false ? '-1px' : '0px',  marginBottom: false ? '-2px' : '10px', border: '1px solid #efefef' }}
-              //                     isSelected={false}
-              //                     onDoubleClick={() => {}}
-              //                     disableHoverEffect={true}
-              //                 />
-              //                 </Box>
-              //             );
-              // })
+            {dataProductAssetsStatus === 'succeeded' && dataProductAssets.length > 0 && assetListLoader && accessDenied && (
+              /* Access denied: show locked asset list with request access buttons */
+              <Box sx={{ marginTop: '1.25rem' }}>
+                <Alert
+                  severity="info"
+                  icon={<LockOutlined />}
+                  sx={{
+                    mb: 2,
+                    borderRadius: '12px',
+                    fontFamily: '"Google Sans Text", sans-serif',
+                    fontSize: '13px',
+                    backgroundColor: '#E8F0FE',
+                    color: '#1A73E8',
+                    '& .MuiAlert-icon': { color: '#1A73E8' }
+                  }}
+                  action={
+                    onRequestAccess && (
+                      <Button
+                        size="small"
+                        onClick={() => onRequestAccess(entry)}
+                        sx={{
+                          fontFamily: '"Google Sans Text", sans-serif',
+                          textTransform: 'none',
+                          color: '#0E4DCA',
+                          fontWeight: 600,
+                          fontSize: '12px',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        Request Access
+                      </Button>
+                    )
+                  }
+                >
+                  You don't have permission to view these assets. Request access to the data product to see full details.
+                </Alert>
+                {dataProductsAssetsList.map((asset: any, index: number) => {
+                  const assetEntry = asset.dataplexEntry || {};
+                  const displayName = assetEntry.entrySource?.displayName || assetEntry.name || 'Unknown Asset';
+                  const system = assetEntry.entrySource?.system || 'BIGQUERY';
+                  const fqn = assetEntry.fullyQualifiedName || '';
+                  return (
+                    <Box
+                      key={index}
+                      sx={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '12px 16px',
+                        borderRadius: '12px',
+                        border: '1px solid #E0E0E0',
+                        marginBottom: '8px',
+                        backgroundColor: '#FAFAFA',
+                        opacity: 0.85,
+                        '&:hover': {
+                          backgroundColor: '#F0F4FF',
+                          borderColor: '#C2D7FE',
+                        }
+                      }}
+                    >
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, minWidth: 0, flex: 1 }}>
+                        <LockOutlined sx={{ color: '#9AA0A6', fontSize: 18 }} />
+                        <Box sx={{ minWidth: 0 }}>
+                          <Typography sx={{
+                            fontFamily: '"Google Sans Text", sans-serif',
+                            fontSize: '13px',
+                            fontWeight: 500,
+                            color: '#3C4043',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                          }}>
+                            {displayName}
+                          </Typography>
+                          <Typography sx={{
+                            fontFamily: '"Google Sans Text", sans-serif',
+                            fontSize: '11px',
+                            color: '#80868B',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                          }}>
+                            {system} {fqn ? `· ${fqn}` : ''}
+                          </Typography>
+                        </Box>
+                      </Box>
+                      {onRequestAccess && (
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          onClick={() => onRequestAccess({
+                            ...entry,
+                            _requestedAsset: {
+                              name: displayName,
+                              resource: asset.linkedResource,
+                              fqn: fqn,
+                              system: system,
+                            }
+                          })}
+                          sx={{
+                            fontFamily: '"Google Sans Text", sans-serif',
+                            textTransform: 'none',
+                            fontSize: '11px',
+                            fontWeight: 500,
+                            color: '#0E4DCA',
+                            borderColor: '#0E4DCA',
+                            borderRadius: '100px',
+                            padding: '2px 12px',
+                            whiteSpace: 'nowrap',
+                            flexShrink: 0,
+                            '&:hover': {
+                              backgroundColor: '#E8F0FE',
+                              borderColor: '#0E4DCA',
+                            }
+                          }}
+                        >
+                          Request Access
+                        </Button>
+                      )}
+                    </Box>
+                  );
+                })}
+              </Box>
+            )}
+            {dataProductAssetsStatus === 'succeeded' && dataProductAssets.length > 0 && assetListLoader && !accessDenied && (
               <Box sx={{ marginTop: '1.25rem' }}>
                 <DataProductAssets
                   linkedAssets={dataProductsAssetsList || []}

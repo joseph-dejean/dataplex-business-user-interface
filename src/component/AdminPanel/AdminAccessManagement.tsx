@@ -84,7 +84,7 @@ const AdminAccessManagement = () => {
   const [loading, setLoading] = useState(true);
   const [pendingRequests, setPendingRequests] = useState<AccessRequest[]>([]);
   const [selectedRequests, setSelectedRequests] = useState<string[]>([]);
-  const [statusFilter, setStatusFilter] = useState<string>('PENDING');
+  const [statusFilter, setStatusFilter] = useState<string>('AWAITING');
   const [accessStatusFilter, setAccessStatusFilter] = useState<string>('all');
   const [projectFilter] = useState<string>('');
 
@@ -98,9 +98,15 @@ const AdminAccessManagement = () => {
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
 
+  // Statuses that represent "awaiting action" (needs approval or rejection)
+  const AWAITING_STATUSES = ['PENDING', 'PARTIALLY_APPROVED'];
+
   // Client-side filtering
   const filteredRequests = pendingRequests.filter((req) => {
     if (statusFilter === 'all') return true;
+    if (statusFilter === 'AWAITING') {
+      return AWAITING_STATUSES.includes(req.status?.toUpperCase());
+    }
     return req.status?.toUpperCase() === statusFilter.toUpperCase();
   });
 
@@ -377,8 +383,10 @@ const AdminAccessManagement = () => {
             <FormControl sx={{ minWidth: 150 }}>
               <InputLabel>Status</InputLabel>
               <Select value={statusFilter} label="Status" onChange={(e) => setStatusFilter(e.target.value)}>
+                <MenuItem value="AWAITING">Awaiting Action</MenuItem>
                 <MenuItem value="all">All</MenuItem>
                 <MenuItem value="PENDING">Pending</MenuItem>
+                <MenuItem value="PARTIALLY_APPROVED">Partially Approved</MenuItem>
                 <MenuItem value="APPROVED">Approved</MenuItem>
                 <MenuItem value="REJECTED">Rejected</MenuItem>
               </Select>

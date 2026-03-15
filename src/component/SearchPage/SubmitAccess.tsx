@@ -57,9 +57,15 @@ interface SubmitAccessProps {
   onSubmitSuccess: (assetName: string) => void;
   previewData?: any;
   isLookup?: boolean;
+  requestedAsset?: {
+    name: string;
+    resource: string;
+    fqn: string;
+    system: string;
+  } | null;
 }
 
-const SubmitAccess: React.FC<SubmitAccessProps> = ({ isOpen, onClose, assetName, entry, onSubmitSuccess, previewData, isLookup }) => {
+const SubmitAccess: React.FC<SubmitAccessProps> = ({ isOpen, onClose, assetName, entry, onSubmitSuccess, previewData, isLookup, requestedAsset }) => {
   const [message, setMessage] = useState('');
 
 
@@ -128,13 +134,21 @@ const SubmitAccess: React.FC<SubmitAccessProps> = ({ isOpen, onClose, assetName,
       console.log('Final contact emails for submission:', contactEmails);
 
       // Extract full resource path from entry for IAM provisioning
-      const linkedResource = entry?.fullyQualifiedName || entry?.entrySource?.resource || '';
+      // If requesting access to a specific asset within a data product, use its resource info
+      const linkedResource = requestedAsset?.resource || entry?.fullyQualifiedName || entry?.entrySource?.resource || '';
 
       // Extract asset type from entry (e.g. "TABLE", "VIEW", "DATA_PRODUCT", etc.)
-      const assetType = entry?.entryType?.split('/')?.pop() || entry?.entryType || '';
+      const assetType = requestedAsset?.system
+        ? `${requestedAsset.system} Asset`
+        : (entry?.entryType?.split('/')?.pop() || entry?.entryType || '');
+
+      // Build the display name for the ticket: include parent data product context if requesting a specific asset
+      const ticketAssetName = requestedAsset
+        ? `${assetName} (in Data Product: ${entry?.entrySource?.displayName || 'Unknown'})`
+        : assetName;
 
       const response = await axios.post(`${URLS.API_URL}${URLS.ACCESS_REQUEST} `, {
-        assetName,
+        assetName: ticketAssetName,
         linkedResource,
         assetType,
         message,

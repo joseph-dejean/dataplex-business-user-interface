@@ -98,6 +98,7 @@ const DataProductsDetailView: React.FC<DataProductsDetailViewProps> = ({ onReque
   const [notificationMessage, setNotificationMessage] = useState<string>('');
   const [assetPreviewData, setAssetPreviewData] = useState<any | null>(null);
   const [isAssetPreviewOpen, setIsAssetPreviewOpen] = useState(false);
+  const [requestAccessTarget, setRequestAccessTarget] = useState<any | null>(null);
   const id_token = user?.token || '';
 
   const selectedDataProduct = JSON.parse(localStorage.getItem('selectedDataProduct') || '{}');
@@ -213,6 +214,7 @@ const DataProductsDetailView: React.FC<DataProductsDetailViewProps> = ({ onReque
 
   const handleCloseSubmitAccess = () => {
     setIsSubmitAccessOpen(false);
+    setRequestAccessTarget(null);
   };
 
   const handleSubmitSuccess = (_assetName: string) => {
@@ -294,6 +296,9 @@ const DataProductsDetailView: React.FC<DataProductsDetailViewProps> = ({ onReque
       setAssetPreviewData(data);
       setIsAssetPreviewOpen(!!data);
     }}
+    onRequestAccess={(data) => {
+      handleRequestAccess(data);
+    }}
   />;
   let accessGroupTab = <AccessGroup entry={selectedDataProductDetails} css={{ width: "100%" }} />;
   let contractTab = <Contract entry={selectedDataProductDetails} css={{ width: "100%" }} />;
@@ -303,6 +308,7 @@ const DataProductsDetailView: React.FC<DataProductsDetailViewProps> = ({ onReque
     if (onRequestAccess) {
       onRequestAccess(data);
     } else {
+      setRequestAccessTarget(data);
       setIsSubmitAccessOpen(true);
     }
   };
@@ -534,11 +540,18 @@ const DataProductsDetailView: React.FC<DataProductsDetailViewProps> = ({ onReque
             {selectedDataProductStatus == 'succeeded' && selectedDataProductDetails && (<SubmitAccess
               isOpen={isSubmitAccessOpen}
               onClose={handleCloseSubmitAccess}
-              assetName={selectedDataProductDetails?.entrySource?.displayName?.length > 0 ? selectedDataProductDetails?.entrySource?.displayName : getName(selectedDataProductDetails.name || '', '/')}
+              assetName={
+                requestAccessTarget?._requestedAsset
+                  ? requestAccessTarget._requestedAsset.name
+                  : (selectedDataProductDetails?.entrySource?.displayName?.length > 0
+                    ? selectedDataProductDetails?.entrySource?.displayName
+                    : getName(selectedDataProductDetails.name || '', '/'))
+              }
               entry={selectedDataProductDetails}
               onSubmitSuccess={handleSubmitSuccess}
               previewData={selectedDataProductDetails ?? null}
               isLookup={true}
+              requestedAsset={requestAccessTarget?._requestedAsset || null}
             />)}
 
             {/* Notification Bar */}

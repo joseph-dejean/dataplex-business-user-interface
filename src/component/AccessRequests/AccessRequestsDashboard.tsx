@@ -57,7 +57,7 @@ const AccessRequestsDashboard: React.FC = () => {
   const [requests, setRequests] = useState<AccessRequest[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
-  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [statusFilter, setStatusFilter] = useState<string>('awaiting');
   const [projectFilter, setProjectFilter] = useState<string>('');
   const [tabValue, setTabValue] = useState<number>(0);
   const [searchTerm, setSearchTerm] = useState<string>('');
@@ -69,6 +69,9 @@ const AccessRequestsDashboard: React.FC = () => {
     fetchAccessRequests();
   }, [user?.email, userRole, statusFilter, projectFilter]);
 
+  // Statuses that represent "awaiting action" (needs approval or rejection)
+  const AWAITING_STATUSES = ['PENDING', 'PARTIALLY_APPROVED'];
+
   const fetchAccessRequests = async () => {
     setLoading(true);
     setError(null);
@@ -79,7 +82,8 @@ const AccessRequestsDashboard: React.FC = () => {
         userRole: userRole
       };
 
-      if (statusFilter !== 'all') {
+      // Only send specific status to backend; 'all' and 'awaiting' are handled client-side
+      if (statusFilter !== 'all' && statusFilter !== 'awaiting') {
         params.status = statusFilter;
       }
 
@@ -197,6 +201,13 @@ const AccessRequestsDashboard: React.FC = () => {
 
     if (!passesTab) return false;
 
+    // Apply status filter (client-side for 'awaiting' virtual filter)
+    if (statusFilter === 'awaiting') {
+      if (!AWAITING_STATUSES.includes(req.status?.toUpperCase())) return false;
+    } else if (statusFilter !== 'all') {
+      if (req.status?.toUpperCase() !== statusFilter.toUpperCase()) return false;
+    }
+
     // Apply text search filter
     if (searchTerm) {
       const search = searchTerm.toLowerCase();
@@ -304,8 +315,10 @@ const AccessRequestsDashboard: React.FC = () => {
               label="Status"
               onChange={(e) => setStatusFilter(e.target.value)}
             >
+              <MenuItem value="awaiting">Awaiting Action</MenuItem>
               <MenuItem value="all">All Status</MenuItem>
               <MenuItem value="pending">Pending</MenuItem>
+              <MenuItem value="partially_approved">Partially Approved</MenuItem>
               <MenuItem value="approved">Approved</MenuItem>
               <MenuItem value="rejected">Rejected</MenuItem>
               <MenuItem value="revoked">Revoked</MenuItem>
