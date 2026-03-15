@@ -187,9 +187,19 @@ const DataProductOverviewNew: React.FC<DataProductOverviewNewProps> = ({ entry, 
     const { date: updateDate, time: updateTime } = (entryType && entryType == 'data-product') ? { date: entry?.updateTime.split('T')[0], time: entry?.updateTime.split('T')[1]?.slice(0, 8) } : getFormattedDateTimeParts(entry?.updateTime?.seconds);
 
 
-    const getEntryType = (namePath: string = '', separator: string = '') => {
+    const getEntryType = (namePath: string = '', separator: string = '', entryTypeParam?: string) => {
+        if (entryTypeParam) {
+            const lastSegment = entryTypeParam.split('/').pop() || '';
+            const upper = lastSegment.toUpperCase();
+            if (upper.includes('TABLE')) return 'Tables';
+            if (upper.includes('DATASET')) return 'Datasets';
+            if (upper.includes('VIEW')) return 'Views';
+            if (upper.includes('PRODUCT')) return 'Products';
+            const cleaned = lastSegment.replace(/^bigquery-/i, '').replace(/[-_]/g, ' ').trim();
+            return cleaned.charAt(0).toUpperCase() + cleaned.slice(1) + 's';
+        }
         const segments: string[] = namePath.split(separator);
-        let eType = segments[segments.length - 2];
+        const eType = segments[segments.length - 2];
         return (`${eType[0].toUpperCase()}${eType.slice(1)}`);
     };
 
