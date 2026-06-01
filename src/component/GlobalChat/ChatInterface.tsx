@@ -6,6 +6,7 @@ import axios from 'axios';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { VegaEmbed } from 'react-vega';
+import { normalizeChartSpec } from '../../utils/chartSpec';
 import { URLS } from '../../constants/urls';
 import { useAuth } from '../../auth/AuthProvider';
 import { useNavigate } from 'react-router-dom';
@@ -326,7 +327,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ entry, mode = 'global', h
                                                         Visual Analysis
                                                     </Typography>
                                                     <Box sx={{ width: '100%', overflow: 'auto' }}>
-                                                        <VegaEmbed spec={msg.chart} />
+                                                        <VegaEmbed spec={normalizeChartSpec(msg.chart)} />
                                                     </Box>
                                                 </Box>
                                             )}

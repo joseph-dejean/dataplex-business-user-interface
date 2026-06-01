@@ -259,7 +259,9 @@ const BrowseByAnnotation = () => {
         const initialSubItems = recordFields.map((field: { name: string; annotations?: { displayName?: string; description?: string; stringType?: string }; type?: string }) => {
           const cacheKey = generateCacheKey(item.title, field.name);
           const cachedData = aspectBrowseCache[cacheKey];
-          const hasCachedData = !!cachedData;
+          // Treat cache entries older than 30 min as missing so stale (e.g.
+          // deleted) datasets get re-fetched instead of shown from cache.
+          const hasCachedData = !!cachedData && (Date.now() - (cachedData.fetchedAt || 0)) < 30 * 60 * 1000;
 
           // Update cache tracking if cached data exists
           if (hasCachedData) {
@@ -315,8 +317,9 @@ const BrowseByAnnotation = () => {
             // Check if data already in cache
             const cacheKey = generateCacheKey(item.title, field.name);
             const cachedData = aspectBrowseCache[cacheKey];
+            const isFreshCache = !!cachedData && (Date.now() - (cachedData.fetchedAt || 0)) < 30 * 60 * 1000;
 
-            if (cachedData) {
+            if (isFreshCache) {
               // Use cached data
               const count = cachedData.totalSize;
 

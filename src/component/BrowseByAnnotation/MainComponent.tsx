@@ -105,8 +105,9 @@ const MainComponent: React.FC<MainComponentProps> = ({
       // Check if data is already cached
       const cacheKey = generateCacheKey(selectedCard.title, selectedSubItem.title);
       const cachedData = aspectBrowseCache[cacheKey];
+      const isFresh = !!cachedData && (Date.now() - (cachedData.fetchedAt || 0)) < 30 * 60 * 1000;
 
-      if (cachedData && subTypesWithCache[cacheKey]) {
+      if (isFresh && subTypesWithCache[cacheKey]) {
         // Use cached data - set directly without API call
         dispatch(setItems(cachedData.data));
         dispatch(setItemsStatus('succeeded'));
