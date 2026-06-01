@@ -6,6 +6,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { VegaEmbed } from 'react-vega';
 import { normalizeChartSpec } from '../../utils/chartSpec';
+import SqlQueryBlock from '../Common/SqlQueryBlock';
 import { URLS } from '../../constants/urls';
 import { useAuth } from '../../auth/AuthProvider';
 
@@ -68,6 +69,7 @@ interface Message {
   timestamp: Date;
   chart?: any; // Vega-Lite spec object from API
   data?: any[]; // Raw data rows from API
+  sql?: string | null; // SQL query the backend generated for this answer
 }
 
 interface RelatedTable {
@@ -321,7 +323,8 @@ const ChatTab: React.FC<ChatTabProps> = ({ entry, tables }) => {
         content: replyContent,
         timestamp: new Date(),
         chart: res.data.chart || null,
-        data: res.data.data || null
+        data: res.data.data || null,
+        sql: res.data.sql || null
       };
       setMessages(prev => [...prev, assistantMsg]);
 
@@ -452,6 +455,7 @@ const ChatTab: React.FC<ChatTabProps> = ({ entry, tables }) => {
                             </Box>
                           </Box>
                         )}
+                        {msg.sql && <SqlQueryBlock sql={msg.sql} />}
                       </>
                     ) : (
                       <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>

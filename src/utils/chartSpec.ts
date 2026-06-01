@@ -5,8 +5,10 @@
  * Fixes two recurring problems:
  *  1. Large, close values (e.g. 187892 vs 187200) look identical because the
  *     quantitative axis starts at zero — the difference is a rounding error of
- *     the full bar height. We detect a narrow value range and disable the zero
- *     baseline (with padding) so differences become visible.
+ *     the full bar height. We disable the zero baseline so differences become
+ *     visible. When we can read the data we compute a tight padded domain; when
+ *     we can't (data lives in a named dataset, or the field key differs) we
+ *     still set `scale.zero = false` and let Vega auto-fit the domain.
  *  2. Poor labeling — missing axis titles, unreadable large numbers, and no
  *     tooltips. We add titles, SI-formatted ticks (187.9k), full-number
  *     tooltips, and label overlap handling.
@@ -19,6 +21,25 @@ const prettify = (field: string): string =>
     .replace(/[_-]+/g, ' ')
     .replace(/\b\w/g, (c) => c.toUpperCase());
 
+/**
+ * Collect the data rows from a spec. Vega-Lite data can be inline
+ * (`data.values`) or referenced by name (`data.name` -> `datasets[name]`).
+ * We also fall back to the first array we find under `datasets`.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const collectValues = (spec: any): any[] => {
+  if (Array.isArray(spec?.data?.values)) return spec.data.values;
+  const datasets = spec?.datasets;
+  if (datasets && typeof datasets === 'object') {
+    const named = spec?.data?.name;
+    if (named && Array.isArray(datasets[named])) return datasets[named];
+    for (const key of Object.keys(datasets)) {
+      if (Array.isArray(datasets[key])) return datasets[key];
+    }
+  }
+  return [];
+};
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const enhanceAxis = (enc: any, values: any[]): void => {
   if (!enc || enc.type !== 'quantitative' || !enc.field) return;
@@ -28,22 +49,30 @@ const enhanceAxis = (enc: any, values: any[]): void => {
   const nums = values
     .map((r) => Number(r?.[enc.field]))
     .filter((v) => typeof v === 'number' && !isNaN(v));
-  if (nums.length < 2) return;
 
-  const min = Math.min(...nums);
-  const max = Math.max(...nums);
-  const range = max - min;
-  const magnitude = Math.max(Math.abs(min), Math.abs(max));
+  if (nums.length >= 2) {
+    const min = Math.min(...nums);
+    const max = Math.max(...nums);
+    const range = max - min;
+    const magnitude = Math.max(Math.abs(min), Math.abs(max));
 
-  // Narrow range relative to magnitude -> drop the zero baseline so the
-  // visible bar/line/point heights reflect the actual differences.
-  if (magnitude > 0 && range > 0 && range / magnitude < 0.4) {
-    const pad = range * 0.15 || magnitude * 0.02;
-    enc.scale = { ...(enc.scale || {}), zero: false, nice: true, domain: [min - pad, max + pad] };
-  }
-
-  // Readable ticks for large numbers (SI units: 187.9k).
-  if (magnitude >= 1000) {
+    // Narrow range relative to magnitude -> tight padded domain so the visible
+    // bar/line/point lengths reflect the actual differences.
+    if (magnitude > 0 && range > 0 && range / magnitude < 0.4) {
+      const pad = range * 0.15 || magnitude * 0.02;
+      enc.scale = { ...(enc.scale || {}), zero: false, nice: true, domain: [min - pad, max + pad] };
+    } else if (magnitude >= 1000) {
+      // Wider range but still large numbers — drop zero so differences show.
+      enc.scale = { ...(enc.scale || {}), zero: false, nice: true };
+    }
+    if (magnitude >= 1000) {
+      enc.axis = { ...(enc.axis || {}), format: '~s' };
+    }
+  } else {
+    // We couldn't read the data (named dataset / field mismatch). Default to a
+    // non-zero baseline so close values are still distinguishable; Vega will
+    // auto-compute the domain from the actual data.
+    enc.scale = { ...(enc.scale || {}), zero: false, nice: true };
     enc.axis = { ...(enc.axis || {}), format: '~s' };
   }
 };
@@ -81,7 +110,7 @@ export function normalizeChartSpec(spec: any): any {
   if (!spec || typeof spec !== 'object') return spec;
   try {
     const clone = JSON.parse(JSON.stringify(spec));
-    const values = clone?.data?.values || [];
+    const values = collectValues(clone);
 
     if (clone.encoding) enhanceEncoding(clone.encoding, values);
     if (Array.isArray(clone.layer)) {
