@@ -151,6 +151,57 @@ export const searchResourcesByTerm = createAsyncThunk('resources/searchResources
   }
 });
 
+// Thunk for the agentic "discovery" search backed by the Python ADK agent
+// (Knowledge Catalog Discovery Agent). It performs semantic decomposition +
+// multi-search server-side and returns merged entries plus a rich context blob.
+// Results are mapped into the same item shape the regular search uses so the
+// existing result UI can render them.
+export const discoverySearch = createAsyncThunk('resources/discoverySearch', async (requestData: any, { rejectWithValue }) => {
+  try {
+    axios.defaults.headers.common['Authorization'] = requestData.id_token ? `Bearer ${requestData.id_token}` : '';
+    const query = (requestData.term ?? '').trim();
+    if (!query) {
+      return { data: [], requestData: {}, results: { totalSize: 0 } };
+    }
+
+    const response = await axios.post(URLS.API_URL + URLS.DISCOVERY_SEARCH, {
+      query,
+      userEmail: requestData.userEmail || '',
+    });
+    const payload = response.data || {};
+    const rawResults: any[] = Array.isArray(payload.results) ? payload.results : [];
+
+    // Map { entry_name, system, resource_id, display_name } -> resource item.
+    const data = rawResults.map((r: any) => ({
+      dataplexEntry: {
+        name: r.entry_name,
+        entryType: r.entry_type || '',
+        entrySource: {
+          system: r.system,
+          resource: r.resource_id,
+          displayName: r.display_name,
+        },
+      },
+      linkedResource: r.resource_id,
+    }));
+
+    return {
+      data,
+      requestData: { query, agentSearch: true },
+      results: {
+        totalSize: data.length,
+        agentAnswer: payload.answer || '',
+        combinedContext: payload.combined_context || '',
+      },
+    };
+  } catch (error) {
+    if (error instanceof AxiosError) {
+      return rejectWithValue(error.response?.data || error.message);
+    }
+    return rejectWithValue('An unknown error occurred');
+  }
+});
+
 export const browseResourcesByAspects = createAsyncThunk('resources/browseResourcesByAspects', async (requestData: any , { rejectWithValue, signal }) => {
 
   // If the term is not empty, we will perform a search.
@@ -353,6 +404,22 @@ export const resourcesSlice = createSlice({
       .addCase(searchResourcesByTerm.rejected, (state, action) => {
         state.status = 'failed';
         state.error = action.payload; // Use payload from rejectWithValue
+      })
+      .addCase(discoverySearch.pending, (state) => {
+        state.items = [];
+        state.status = 'loading';
+      })
+      .addCase(discoverySearch.fulfilled, (state, action) => {
+        const payload = action.payload;
+        state.totalItems = payload?.results?.totalSize ?? 0;
+        state.itemsRequestData = payload?.requestData ?? {};
+        state.itemsStore = payload?.data ?? []; // agent returns a single merged page
+        state.items = payload?.data ?? [];
+        state.status = 'succeeded';
+      })
+      .addCase(discoverySearch.rejected, (state, action) => {
+        state.status = 'failed';
+        state.error = action.payload;
       })
       .addCase(browseResourcesByAspects.pending, (state) => {
         state.items = [];

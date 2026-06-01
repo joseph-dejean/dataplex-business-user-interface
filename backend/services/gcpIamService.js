@@ -3,6 +3,47 @@ const { GoogleAuth, OAuth2Client } = require('google-auth-library');
 const { BigQuery } = require('@google-cloud/bigquery');
 
 /**
+ * In-memory cache of project IAM bindings to avoid hammering
+ * cloudresourcemanager.projects.getIamPolicy. Without this, every access check
+ * fired getIamPolicy 5 times (once per role) and the same project was re-fetched
+ * for every table on screen, which triggers 429 rate-limit / quota errors. When
+ * those errors made every role check return false, the user appeared to "lose
+ * access to all tables" at once.
+ */
+const IAM_BINDINGS_TTL_MS = 5 * 60 * 1000;
+const iamBindingsCache = new Map(); // projectId -> { bindings, expiresAt }
+
+/**
+ * A transient error is a temporary failure (rate limit, timeout, 5xx, network)
+ * that should NOT be interpreted as "the user has no access". The data layer
+ * (BigQuery) still enforces real access when the user actually queries, so for
+ * these UI gating checks we fail OPEN on transient errors and let the user
+ * through rather than hiding everything.
+ */
+const isTransientError = (error) => {
+    const code = error?.code ?? error?.response?.status ?? error?.cause?.code;
+    const numeric = typeof code === 'number' ? code : parseInt(code, 10);
+    if (numeric === 429 || (numeric >= 500 && numeric <= 599)) return true;
+    const transientCodes = ['ECONNRESET', 'ETIMEDOUT', 'ECONNREFUSED', 'EAI_AGAIN', 'ENOTFOUND'];
+    if (typeof code === 'string' && transientCodes.includes(code)) return true;
+    const msg = (error?.message || '').toLowerCase();
+    return msg.includes('rate limit') || msg.includes('quota') || msg.includes('timeout')
+        || msg.includes('econnreset') || msg.includes('try again') || msg.includes('unavailable');
+};
+
+/**
+ * A "definitive denial" means GCP told us the caller is not allowed to read the
+ * IAM policy (403 / PERMISSION_DENIED). That is a real signal we can act on.
+ */
+const isPermissionDenied = (error) => {
+    const code = error?.code ?? error?.response?.status;
+    const numeric = typeof code === 'number' ? code : parseInt(code, 10);
+    if (numeric === 403) return true;
+    const msg = (error?.message || '').toLowerCase();
+    return msg.includes('permission') && msg.includes('denied');
+};
+
+/**
  * Create a BigQuery client, optionally using a user's access token.
  * @param {string} projectId - The GCP Project ID.
  * @param {string} [userAccessToken] - Optional user OAuth access token.
@@ -272,6 +313,11 @@ const revokeIamAccess = async (projectId, email, role) => {
  * @returns {Object[]} List of IAM bindings
  */
 const getIamBindings = async (projectId) => {
+    const cached = iamBindingsCache.get(projectId);
+    if (cached && cached.expiresAt > Date.now()) {
+        return cached.bindings;
+    }
+
     console.log(`Fetching IAM bindings for project: ${projectId}`);
 
     try {
@@ -289,11 +335,53 @@ const getIamBindings = async (projectId) => {
             requestBody: {}
         });
 
-        return response.data.bindings || [];
+        const bindings = response.data.bindings || [];
+        iamBindingsCache.set(projectId, { bindings, expiresAt: Date.now() + IAM_BINDINGS_TTL_MS });
+        return bindings;
 
     } catch (error) {
         console.error('Error fetching IAM bindings:', error);
-        throw new Error(`Failed to fetch IAM bindings: ${error.message}`);
+        // Preserve the original error so callers can tell transient (429/5xx)
+        // failures apart from a real permission denial.
+        const wrapped = new Error(`Failed to fetch IAM bindings: ${error.message}`);
+        wrapped.transient = isTransientError(error);
+        wrapped.permissionDenied = isPermissionDenied(error);
+        wrapped.cause = error;
+        throw wrapped;
+    }
+};
+
+/**
+ * Check whether a user holds ANY of the given roles on a project, fetching the
+ * project's IAM bindings only once (vs once per role). Returns a result object
+ * instead of throwing for transient issues so callers can fail open.
+ *
+ * @param {string} projectId
+ * @param {string} email
+ * @param {string[]} roles - e.g. ['roles/owner', 'roles/viewer']
+ * @returns {Promise<{hasAccess: boolean, degraded: boolean, matchedRole: string|null}>}
+ *   degraded=true means the IAM policy could not be read due to a transient
+ *   error and the answer is unknown (caller should fail open).
+ */
+const checkUserRoles = async (projectId, email, roles) => {
+    const member = email.includes(':') ? email : `user:${email}`;
+    try {
+        const bindings = await getIamBindings(projectId);
+        for (const role of roles) {
+            const binding = bindings.find(b => b.role === role);
+            if (binding && (binding.members || []).includes(member)) {
+                return { hasAccess: true, degraded: false, matchedRole: role };
+            }
+        }
+        return { hasAccess: false, degraded: false, matchedRole: null };
+    } catch (error) {
+        if (error.transient) {
+            console.warn(`[IAM] Transient error reading IAM policy for ${projectId}; treating access as UNKNOWN (fail-open):`, error.message);
+            return { hasAccess: false, degraded: true, matchedRole: null };
+        }
+        // Permission denied or other definitive errors => not granted via project IAM.
+        console.warn(`[IAM] Could not verify project roles for ${projectId}:`, error.message);
+        return { hasAccess: false, degraded: false, matchedRole: null };
     }
 };
 
@@ -375,5 +463,6 @@ module.exports = {
     revokeIamAccess,
     getIamBindings,
     verifyUserAccess,
+    checkUserRoles,
     listProjectMembers
 };

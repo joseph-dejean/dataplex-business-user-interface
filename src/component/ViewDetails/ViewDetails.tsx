@@ -371,7 +371,7 @@ useEffect(() => {
 
       const tableInsightsScan = allScans.find(
         (scan: any) =>
-          scan.data.resource.includes(resourceName) && (scan.type === 'DATA_DOCUMENTATION' || scan.type === 4)
+          (scan.data.resource === resourceName || scan.data.resource === `//bigquery.googleapis.com/${resourceName}`) && (scan.type === 'DATA_DOCUMENTATION' || scan.type === 4)
       );
       console.log("Table Insights Scans found:", tableInsightsScan);
       setTableInsightsScanName(tableInsightsScan?.name || null);

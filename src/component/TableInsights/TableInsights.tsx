@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { Box, Drawer } from '@mui/material';
+import { Box, Drawer, Button, CircularProgress } from '@mui/material';
+import { AutoAwesome } from '@mui/icons-material';
 import type { AppDispatch } from '../../app/store';
+import api from '../../api/api';
 import {
   fetchInsights,
   selectInsightsData,
@@ -47,6 +49,26 @@ const TableInsights: React.FC<TableInsightsProps> = ({ entry, scanName }) => {
     geminiDescription: string;
     columnDescriptions: ColumnDescription[];
   } | null>(null);
+  const [generating, setGenerating] = useState(false);
+  const [generateMsg, setGenerateMsg] = useState<string | null>(null);
+
+  // Trigger creation + run of a Dataplex Data Documentation scan for this table.
+  const handleGenerateInsights = async () => {
+    setGenerating(true);
+    setGenerateMsg(null);
+    try {
+      await api.post('/generate-data-documentation', {
+        fullyQualifiedName: entry?.fullyQualifiedName,
+        resource: resourceId,
+      });
+      setGenerateMsg('Data Documentation scan started. Insights usually appear within a few minutes — refresh this tab shortly.');
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail || err?.response?.data?.error || err?.message;
+      setGenerateMsg(`Could not start the scan: ${detail}`);
+    } finally {
+      setGenerating(false);
+    }
+  };
 
   // Sync preview panel state with global context for z-index management
   useEffect(() => {
@@ -102,8 +124,28 @@ const TableInsights: React.FC<TableInsightsProps> = ({ entry, scanName }) => {
           </svg>
           <p className="insights-empty-state__title">No AI-generated insights available</p>
           <p className="insights-empty-state__subtitle">
-            Run a Data Documentation scan in Dataplex to generate insights for this table.
+            Generate a Data Documentation scan in Dataplex to create AI insights for this table.
           </p>
+          <Button
+            variant="contained"
+            startIcon={generating ? <CircularProgress size={16} color="inherit" /> : <AutoAwesome />}
+            onClick={handleGenerateInsights}
+            disabled={generating}
+            sx={{
+              mt: 1.5,
+              textTransform: 'none',
+              backgroundColor: '#1a73e8',
+              fontFamily: 'Google Sans, sans-serif',
+              '&:hover': { backgroundColor: '#1765cc' },
+            }}
+          >
+            {generating ? 'Starting scan…' : 'Generate insights'}
+          </Button>
+          {generateMsg && (
+            <p className="insights-empty-state__subtitle" style={{ marginTop: '12px', maxWidth: 420 }}>
+              {generateMsg}
+            </p>
+          )}
         </Box>
       </Box>
     );

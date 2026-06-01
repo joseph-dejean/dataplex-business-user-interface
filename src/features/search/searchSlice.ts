@@ -6,6 +6,7 @@ type searchState = {
   searchType: string; // Add search type to persist dropdown selection
   searchFilters:any[];
   semanticSearch?: boolean;
+  agentSearch?: boolean; // Use the ADK discovery agent for search
   isSearchFiltersOpen: boolean;
   isSideNavOpen: boolean;
   searchSubmitted: boolean;
@@ -17,6 +18,7 @@ const initialState : searchState = {
   searchType: 'All', // Default to 'All',
   searchFilters:[],
   semanticSearch: true,
+  agentSearch: false,
   isSearchFiltersOpen: true,
   isSideNavOpen: true,
   searchSubmitted: false,
@@ -41,6 +43,9 @@ export const searchSlice = createSlice({
     setSemanticSearch: (state, action) => {
       state.semanticSearch = action.payload.semanticSearch;
     },
+    setAgentSearch: (state, action) => {
+      state.agentSearch = action.payload.agentSearch;
+    },
     setSearchFiltersOpen: (state, action) => {
       state.isSearchFiltersOpen = action.payload;
     },
@@ -53,6 +58,6 @@ export const searchSlice = createSlice({
   },
 });
 
-export const { setSearchResult, setSearchTerm, setSearchType, setSearchFilters, setSemanticSearch, setSearchFiltersOpen, setSideNavOpen, setSearchSubmitted } = searchSlice.actions;
+export const { setSearchResult, setSearchTerm, setSearchType, setSearchFilters, setSemanticSearch, setAgentSearch, setSearchFiltersOpen, setSideNavOpen, setSearchSubmitted } = searchSlice.actions;
 
 export default searchSlice.reducer;

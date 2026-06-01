@@ -29,6 +29,7 @@ export const URLS = {
     CHECK_IAM_ROLE: '/check-iam-role',
     SEARCH: '/search',
     AI_SEARCH: '/ai-search',
+    DISCOVERY_SEARCH: '/discovery-search',
     GET_ENTRY: '/get-entry',
     GET_ENTRY_BY_FQN: '/get-entry-by-fqn',
     GET_SAMPLE_DATA: '/get-sample-data',

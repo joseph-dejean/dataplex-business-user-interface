@@ -36,7 +36,10 @@ const authMiddleware = require('./middlewares/authMiddleware');
 const { querySampleFromBigQuery } = require('./utility');
 const { sendAccessRequestEmail, sendApprovalEmail, sendRejectionEmail, sendFeedbackEmail } = require('./services/emailService');
 const { createAccessRequest, getAccessRequests, updateAccessRequestStatus, getAccessRequestById } = require('./services/accessRequestService');
-const { grantDatasetAccess, revokeDatasetAccess, grantIamAccess, revokeIamAccess, getIamBindings, verifyUserAccess } = require('./services/gcpIamService');
+const { grantDatasetAccess, revokeDatasetAccess, grantIamAccess, revokeIamAccess, getIamBindings, verifyUserAccess, checkUserRoles } = require('./services/gcpIamService');
+
+// Roles that grant read access to BigQuery data for the UI access-gating checks.
+const ACCESS_ROLES = ['roles/owner', 'roles/editor', 'roles/viewer', 'roles/bigquery.dataViewer', 'roles/bigquery.admin'];
 const adminService = require('./services/adminService');
 const grantedAccessService = require('./services/grantedAccessService');
 const notificationService = require('./services/notificationService');
@@ -2242,6 +2245,99 @@ app.post('/api/v1/get-insights', async (req, res) => {
   } catch (error) {
     console.error('[INSIGHTS] Error:', error);
     res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * POST /api/v1/generate-data-documentation
+ * Create (if missing) and run a Dataplex Data Documentation scan for a BigQuery
+ * table, so the rich "Insights" tab can be populated with Gemini-generated
+ * descriptions and suggested queries.
+ *
+ * The installed @google-cloud/dataplex SDK (4.1.0) does not yet model the
+ * DATA_DOCUMENTATION scan type, so we call the Dataplex REST API directly with
+ * ADC credentials.
+ *
+ * Body: { fullyQualifiedName: "bigquery:project.dataset.table", location?: "europe-west1" }
+ * Returns: { scanName, jobName, status, created }
+ */
+app.post('/api/v1/generate-data-documentation', async (req, res) => {
+  try {
+    const crypto = require('crypto');
+    const { fullyQualifiedName, resource: resourceOverride, location: locationOverride } = req.body;
+
+    // Resolve the BigQuery resource path from the FQN.
+    let resource = resourceOverride || null;
+    if (!resource && fullyQualifiedName) {
+      const fqn = String(fullyQualifiedName).replace(/^bigquery:/, '');
+      const [proj, dataset, table] = fqn.split('.');
+      if (proj && dataset && table) {
+        resource = `//bigquery.googleapis.com/projects/${proj}/datasets/${dataset}/tables/${table}`;
+      }
+    }
+    if (!resource) {
+      return res.status(400).json({ error: 'fullyQualifiedName (bigquery:project.dataset.table) or resource is required' });
+    }
+
+    const location = locationOverride || process.env.GCP_LOCATION || 'europe-west1';
+    if (!PROJECT_ID) {
+      return res.status(500).json({ error: 'Server project id is not configured' });
+    }
+
+    // Deterministic scan id so repeated calls reuse the same scan.
+    const tableName = (resource.split('/tables/')[1] || 'table').toLowerCase().replace(/[^a-z0-9-]/g, '-').slice(0, 40);
+    const hash = crypto.createHash('md5').update(resource).digest('hex').slice(0, 8);
+    let scanId = `datadoc-${tableName}-${hash}`.replace(/-+/g, '-').slice(0, 63);
+    if (!/^[a-z]/.test(scanId)) scanId = `d${scanId}`.slice(0, 63);
+
+    const parent = `projects/${PROJECT_ID}/locations/${location}`;
+    const scanName = `${parent}/dataScans/${scanId}`;
+    const base = 'https://dataplex.googleapis.com/v1';
+
+    const auth = new AdcGoogleAuth();
+    const client = await auth.getClient();
+
+    // 1. Create the scan (ignore ALREADY_EXISTS).
+    let created = false;
+    try {
+      await client.request({
+        url: `${base}/${parent}/dataScans?dataScanId=${scanId}`,
+        method: 'POST',
+        data: {
+          data: { resource },
+          type: 'DATA_DOCUMENTATION',
+          dataDocumentationSpec: {},
+        },
+      });
+      created = true;
+    } catch (createErr) {
+      const code = createErr.response?.status;
+      const msg = createErr.response?.data?.error?.message || createErr.message;
+      if (code === 409 || /already exists/i.test(msg)) {
+        created = false; // Scan already exists — fine, we'll just run it.
+      } else {
+        console.error('[DATA-DOC] Create failed:', msg);
+        return res.status(code || 502).json({ error: 'Failed to create Data Documentation scan', detail: msg });
+      }
+    }
+
+    // 2. Run the scan.
+    try {
+      const runResp = await client.request({
+        url: `${base}/${scanName}:run`,
+        method: 'POST',
+        data: {},
+      });
+      const jobName = runResp.data?.job?.name || null;
+      return res.json({ scanName, jobName, status: 'RUNNING', created });
+    } catch (runErr) {
+      const msg = runErr.response?.data?.error?.message || runErr.message;
+      console.error('[DATA-DOC] Run failed:', msg);
+      return res.status(runErr.response?.status || 502).json({ error: 'Scan created but run failed', detail: msg, scanName, created });
+    }
+  } catch (error) {
+    console.error('[DATA-DOC] Error:', error.message);
+    return res.status(500).json({ error: error.message });
   }
 });
 
@@ -4582,17 +4678,19 @@ app.post('/api/v1/check-access', async (req, res) => {
 
     console.log(`[CHECK-ACCESS] Checking access for ${userEmail} on project ${targetProject}, dataset ${datasetId}`);
 
-    // 1. Check project-level access
-    const isOwner = await verifyUserAccess(targetProject, userEmail, 'roles/owner');
-    const isEditor = await verifyUserAccess(targetProject, userEmail, 'roles/editor');
-    const isViewer = await verifyUserAccess(targetProject, userEmail, 'roles/viewer');
-    const isBqViewer = await verifyUserAccess(targetProject, userEmail, 'roles/bigquery.dataViewer');
-    const isBqAdmin = await verifyUserAccess(targetProject, userEmail, 'roles/bigquery.admin');
+    // 1. Check project-level access (single IAM policy read, cached)
+    const projectAccess = await checkUserRoles(targetProject, userEmail, ACCESS_ROLES);
 
-    console.log(`[CHECK-ACCESS] Project roles - Owner:${isOwner}, Editor:${isEditor}, Viewer:${isViewer}, BQ Viewer:${isBqViewer}, BQ Admin:${isBqAdmin}`);
+    console.log(`[CHECK-ACCESS] Project roles for ${userEmail} on ${targetProject} - hasAccess:${projectAccess.hasAccess}, matched:${projectAccess.matchedRole}, degraded:${projectAccess.degraded}`);
 
-    if (isOwner || isEditor || isViewer || isBqViewer || isBqAdmin) {
-      return res.json({ hasAccess: true, level: 'project' });
+    if (projectAccess.hasAccess) {
+      return res.json({ hasAccess: true, level: 'project', matchedRole: projectAccess.matchedRole });
+    }
+
+    // If the IAM policy could not be read due to a transient error, do NOT hide
+    // the table. Fail open: BigQuery still enforces real access on query.
+    if (projectAccess.degraded) {
+      return res.json({ hasAccess: true, level: 'unknown', degraded: true });
     }
 
     // 2. Check dataset-level access
@@ -4676,14 +4774,15 @@ app.get('/api/v1/check-entry-access', async (req, res) => {
 
     console.log(`[CHECK-ENTRY-ACCESS] Checking ${userEmail} on project=${targetProject}, dataset=${datasetId}`);
 
-    const isOwner = await verifyUserAccess(targetProject, userEmail, 'roles/owner');
-    const isEditor = await verifyUserAccess(targetProject, userEmail, 'roles/editor');
-    const isViewer = await verifyUserAccess(targetProject, userEmail, 'roles/viewer');
-    const isBqViewer = await verifyUserAccess(targetProject, userEmail, 'roles/bigquery.dataViewer');
-    const isBqAdmin = await verifyUserAccess(targetProject, userEmail, 'roles/bigquery.admin');
+    const projectAccess = await checkUserRoles(targetProject, userEmail, ACCESS_ROLES);
 
-    if (isOwner || isEditor || isViewer || isBqViewer || isBqAdmin) {
-      return res.json({ hasAccess: true, level: 'project' });
+    if (projectAccess.hasAccess) {
+      return res.json({ hasAccess: true, level: 'project', matchedRole: projectAccess.matchedRole });
+    }
+
+    // Transient IAM read failure => unknown, fail open (BigQuery enforces on query).
+    if (projectAccess.degraded) {
+      return res.json({ hasAccess: true, level: 'unknown', degraded: true });
     }
 
     if (datasetId) {
@@ -4707,6 +4806,59 @@ app.get('/api/v1/check-entry-access', async (req, res) => {
   } catch (error) {
     console.error('[CHECK-ENTRY-ACCESS] Error:', error);
     return res.status(500).json({ hasAccess: false, error: error.message });
+  }
+});
+
+/**
+ * POST /api/v1/discovery-search
+ * Proxy to the Python ADK "Knowledge Catalog Discovery Agent" microservice
+ * (see /agent_service). The agent performs semantic decomposition + parallel
+ * multi-search + LookupContext enrichment, which is richer than the single
+ * Gemini-translated query used by /search.
+ *
+ * Configure DISCOVERY_AGENT_URL to enable it. If unset, returns 503 so the
+ * frontend can gracefully fall back to regular search.
+ */
+app.post('/api/v1/discovery-search', async (req, res) => {
+  try {
+    const { query, userEmail } = req.body;
+    const agentUrl = process.env.DISCOVERY_AGENT_URL;
+
+    if (!agentUrl) {
+      return res.status(503).json({ error: 'Discovery agent not configured', code: 'AGENT_NOT_CONFIGURED' });
+    }
+    if (!query || !String(query).trim()) {
+      return res.status(400).json({ error: 'query is required' });
+    }
+
+    const base = agentUrl.replace(/\/+$/, '');
+    const target = `${base}/discovery-search`;
+
+    let headers = { 'Content-Type': 'application/json' };
+    // The agent service is expected to be a private Cloud Run service; attach a
+    // Google-signed ID token (audience = service URL). If minting fails (e.g.
+    // the service is public, or running locally), proceed without it.
+    try {
+      const auth = new GoogleAuth();
+      const client = await auth.getIdTokenClient(base);
+      const idHeaders = await client.getRequestHeaders();
+      headers = { ...headers, ...idHeaders };
+    } catch (tokenErr) {
+      console.warn('[DISCOVERY] Could not mint ID token (continuing unauthenticated):', tokenErr.message);
+    }
+
+    const response = await axios.post(
+      target,
+      { query: String(query), user_id: userEmail || 'anonymous' },
+      { headers, timeout: 60000 }
+    );
+    return res.json(response.data);
+  } catch (error) {
+    console.error('[DISCOVERY] Error:', error.response?.data || error.message);
+    return res.status(502).json({
+      error: 'Discovery agent request failed',
+      detail: error.response?.data || error.message
+    });
   }
 });
 

@@ -26,6 +26,7 @@ import {
   Code,
   Description
 } from '@mui/icons-material';
+import { Highlight, themes } from 'prism-react-renderer';
 import api from '../../api/api';
 
 interface InsightsPanelProps {
@@ -354,24 +355,102 @@ const InsightsPanel: React.FC<InsightsPanelProps> = ({ entryName, fullyQualified
                       </Box>
                     </Box>
                     <Collapse in={expandedQuery === index}>
-                      <Box
-                        sx={{
-                          px: 1.5,
-                          py: 1,
-                          backgroundColor: '#1e1e1e',
-                          fontFamily: 'monospace',
-                          fontSize: '0.8rem',
-                          color: '#d4d4d4',
-                          whiteSpace: 'pre-wrap',
-                          overflowX: 'auto'
-                        }}
-                      >
-                        {sq.query}
-                      </Box>
+                      <Highlight theme={themes.nightOwlLight} code={sq.query || ''} language="sql">
+                        {({ className, style, tokens, getLineProps, getTokenProps }) => (
+                          <Box
+                            component="pre"
+                            className={className}
+                            sx={{
+                              ...style,
+                              px: 1.5,
+                              py: 1,
+                              margin: 0,
+                              fontSize: '0.8rem',
+                              lineHeight: 1.5,
+                              whiteSpace: 'pre-wrap',
+                              wordBreak: 'break-word',
+                              overflowX: 'auto'
+                            }}
+                          >
+                            {tokens.map((line, i) => (
+                              <div {...getLineProps({ line, key: i })}>
+                                {line.map((token, key) => (
+                                  <span {...getTokenProps({ token, key })} />
+                                ))}
+                              </div>
+                            ))}
+                          </Box>
+                        )}
+                      </Highlight>
                     </Collapse>
                   </Paper>
                 ))}
               </Box>
+            </Box>
+          </>
+        )}
+
+        {/* Data Profile (Dataplex Data Profile scan) */}
+        {insights.dataProfile && (
+          <>
+            <Divider sx={{ my: 2 }} />
+            <Box>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
+                <ViewColumn sx={{ color: '#1967d2', fontSize: '1.2rem' }} />
+                <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#1f1f1f' }}>
+                  Data Profile
+                </Typography>
+                {insights.dataProfile.rowCount != null && (
+                  <Typography variant="caption" color="text.secondary">
+                    ({formatNumber(Number(insights.dataProfile.rowCount))} rows scanned)
+                  </Typography>
+                )}
+              </Box>
+              {Array.isArray(insights.dataProfile.profile?.fields) && insights.dataProfile.profile.fields.length > 0 ? (
+                <Box sx={{ overflowX: 'auto' }}>
+                  <Box component="table" sx={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                    <Box component="thead">
+                      <Box component="tr" sx={{ textAlign: 'left', color: '#5f6368' }}>
+                        <Box component="th" sx={{ py: 0.5, pr: 1, fontWeight: 500 }}>Column</Box>
+                        <Box component="th" sx={{ py: 0.5, pr: 1, fontWeight: 500 }}>Type</Box>
+                        <Box component="th" sx={{ py: 0.5, pr: 1, fontWeight: 500 }}>Null %</Box>
+                        <Box component="th" sx={{ py: 0.5, pr: 1, fontWeight: 500 }}>Distinct %</Box>
+                      </Box>
+                    </Box>
+                    <Box component="tbody">
+                      {insights.dataProfile.profile.fields.slice(0, 50).map((field: any, i: number) => {
+                        const p = field.profile || {};
+                        const ratioCell = (v: any, color: string) => {
+                          if (v == null) return <Typography variant="caption" color="text.secondary">—</Typography>;
+                          const ratio = Math.max(0, Math.min(1, Number(v)));
+                          return (
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, minWidth: 90 }}>
+                              <Box sx={{ flex: 1, height: 6, borderRadius: 3, backgroundColor: '#eef1f5', overflow: 'hidden' }}>
+                                <Box sx={{ width: `${ratio * 100}%`, height: '100%', backgroundColor: color }} />
+                              </Box>
+                              <Typography variant="caption" sx={{ color: '#3c4043', minWidth: 30, textAlign: 'right' }}>
+                                {Math.round(ratio * 100)}%
+                              </Typography>
+                            </Box>
+                          );
+                        };
+                        return (
+                          <Box component="tr" key={field.name || i} sx={{ borderTop: '1px solid #eee' }}>
+                            <Box component="td" sx={{ py: 0.5, pr: 1, fontWeight: 500, color: '#1f1f1f' }}>{field.name}</Box>
+                            <Box component="td" sx={{ py: 0.5, pr: 1, color: '#5f6368' }}>{field.type}</Box>
+                            <Box component="td" sx={{ py: 0.5, pr: 1 }}>{ratioCell(p.nullRatio, '#ea8600')}</Box>
+                            <Box component="td" sx={{ py: 0.5, pr: 1 }}>{ratioCell(p.distinctRatio, '#1a73e8')}</Box>
+                          </Box>
+                        );
+                      })}
+                    </Box>
+                  </Box>
+                </Box>
+              ) : (
+                <Typography variant="caption" color="text.secondary">
+                  Profile available from Dataplex Data Profile scan.
+                </Typography>
+              )}
             </Box>
           </>
         )}

@@ -146,15 +146,29 @@ const PreviewAnnotation: React.FC<PreviewAnnotationProps> = ({
 
   const keys = Object.keys(aspects ?? {});
 
-  // Filter out global aspects to check if there are any displayable aspects
-  const displayableKeys = keys.filter((key) => {
+  // System aspects (schema/overview/contacts/usage) are surfaced in dedicated
+  // sections of the detail page, so by default the annotations panel hides them
+  // to avoid duplication. Users reported "only the aspects I created show up" —
+  // so we expose a toggle to reveal these system/generated aspects here too,
+  // ensuring nothing is ever truly hidden. Glossary-term aspects stay excluded
+  // because they belong to the glossary surface.
+  const isSystemAspectKey = (key: string) => {
     const isSchema = key === `${number}.global.schema`;
     const isOverview = key.endsWith('.global.overview');
     const isContacts = key === `${number}.global.contacts`;
     const isUsage = key === `${number}.global.usage`;
-    const isGlossaryTermAspect = key.endsWith('.global.glossary-term-aspect');
-    return !(isSchema || isOverview || isContacts || isUsage || isGlossaryTermAspect);
-  });
+    return isSchema || isOverview || isContacts || isUsage;
+  };
+  const isAlwaysHiddenKey = (key: string) => key.endsWith('.global.glossary-term-aspect');
+
+  // Toggle to reveal system/generated aspects inside this panel.
+  const [showSystem, setShowSystem] = useState(false);
+
+  const customKeys = keys.filter((key) => !isSystemAspectKey(key) && !isAlwaysHiddenKey(key));
+  const systemKeys = keys.filter((key) => isSystemAspectKey(key));
+
+  // The effective list of aspects rendered, in a stable order (custom first).
+  const displayableKeys = showSystem ? [...customKeys, ...systemKeys] : customKeys;
 
   // State to track sub-field expansion (L2/L3)
   const [expandedFieldPaths, setExpandedFieldPaths] = useState<Set<string>>(new Set());
@@ -303,8 +317,9 @@ const PreviewAnnotation: React.FC<PreviewAnnotationProps> = ({
     );
   };
 
-  // Show empty state if no displayable aspects
-  if (displayableKeys.length === 0) {
+  // Show empty state only when there is genuinely nothing to display — neither
+  // custom aspects nor (hidden) system aspects the user could reveal.
+  if (displayableKeys.length === 0 && systemKeys.length === 0) {
     return (
       <div style={{
         display: 'flex',
@@ -325,18 +340,31 @@ const PreviewAnnotation: React.FC<PreviewAnnotationProps> = ({
 
   return (
     <>
+      {systemKeys.length > 0 && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '4px 8px' }}>
+          <Typography
+            component="button"
+            onClick={() => setShowSystem((v) => !v)}
+            sx={{
+              border: 'none',
+              background: 'none',
+              cursor: 'pointer',
+              fontFamily: 'Google Sans, sans-serif',
+              fontSize: '12px',
+              fontWeight: 500,
+              color: '#1a73e8',
+              padding: 0,
+              '&:hover': { textDecoration: 'underline' },
+            }}
+          >
+            {showSystem
+              ? `Hide system aspects (${systemKeys.length})`
+              : `Show system aspects (${systemKeys.length})`}
+          </Typography>
+        </div>
+      )}
       <div style={{ fontSize: "0.75rem", display: "flex", flexDirection: "column", flex: "1 1 auto", overflow: "hidden", borderRadius: '12px', ...css }}>
-        {keys.map((key) => {
-          const isSchema = key === `${number}.global.schema`;
-          const isOverview = key.endsWith('.global.overview');
-          const isContacts = key === `${number}.global.contacts`;
-          const isUsage = key === `${number}.global.usage`;
-          const isGlossaryTermAspect = key.endsWith('.global.glossary-term-aspect');
-
-          if (isSchema || isOverview || isContacts || isUsage || isGlossaryTermAspect) {
-            return null;
-          }
-
+        {displayableKeys.map((key) => {
           const isFirstAspect = key === displayableKeys[0];
           const isLastAspect = key === displayableKeys[displayableKeys.length - 1];
           const isSingleItem = displayableKeys.length === 1;
