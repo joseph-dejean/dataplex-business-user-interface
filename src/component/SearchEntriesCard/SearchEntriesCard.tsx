@@ -747,38 +747,12 @@ const SearchEntriesCard: React.FC<SearchEntriesCardProps> = ({ entry, sx, isSele
                   )
                 )}
 
-                {/* Details Button */}
-                {!isAccessDenied ? (
-                  <Box
-                    onClick={(e: React.MouseEvent) => { e.stopPropagation(); dispatch(clearHistory()); dispatch(fetchEntry({ entryName: entry.name, id_token })); navigate('/view-details'); }}
-                    sx={{
-                      height: '32px',
-                      padding: '6px 12px',
-                      background: mode === 'dark' ? '#a7c6fa' : '#0B57D0',
-                      borderRadius: '100px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      cursor: 'pointer',
-                      boxSizing: 'border-box',
-                      transition: 'background-color 0.2s ease',
-                      '&:hover': { backgroundColor: mode === 'dark' ? '#8fb8f0' : '#1A5CD8' },
-                    }}
-                  >
-                    <span className="view-details-text" style={{
-                      fontFamily: '"Google Sans", sans-serif',
-                      fontWeight: 500,
-                      fontSize: '14px',
-                      lineHeight: '20px',
-                      letterSpacing: '0.1px',
-                      color: mode === 'dark' ? '#072e6f' : '#F0F4F8',
-                      whiteSpace: 'nowrap',
-                    }}>
-                      Details
-                    </span>
-                  </Box>
-                ) : isAccessLoading ? (
-                  <div style={{
+                {/* Details Button — ALWAYS clickable. Browsing an asset's metadata
+                    (schema, description, aspects, lineage) must not require data
+                    access; only the actual rows/external tools are gated. */}
+                <Box
+                  onClick={(e: React.MouseEvent) => { e.stopPropagation(); dispatch(clearHistory()); dispatch(fetchEntry({ entryName: entry.name, id_token })); navigate('/view-details'); }}
+                  sx={{
                     height: '32px',
                     padding: '6px 12px',
                     background: mode === 'dark' ? '#a7c6fa' : '#0B57D0',
@@ -786,35 +760,24 @@ const SearchEntriesCard: React.FC<SearchEntriesCardProps> = ({ entry, sx, isSele
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
+                    cursor: 'pointer',
                     boxSizing: 'border-box',
+                    transition: 'background-color 0.2s ease',
+                    '&:hover': { backgroundColor: mode === 'dark' ? '#8fb8f0' : '#1A5CD8' },
+                  }}
+                >
+                  <span className="view-details-text" style={{
+                    fontFamily: '"Google Sans", sans-serif',
+                    fontWeight: 500,
+                    fontSize: '14px',
+                    lineHeight: '20px',
+                    letterSpacing: '0.1px',
+                    color: mode === 'dark' ? '#072e6f' : '#F0F4F8',
+                    whiteSpace: 'nowrap',
                   }}>
-                    <CircularProgress size={16} sx={{ color: '#F0F4F8' }} />
-                  </div>
-                ) : (
-                  <div style={{
-                    height: '32px',
-                    padding: '6px 12px',
-                    background: mode === 'dark' ? '#a7c6fa' : '#0B57D0',
-                    borderRadius: '100px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    boxSizing: 'border-box',
-                    opacity: 0.4,
-                  }}>
-                    <span className="view-details-text" style={{
-                      fontFamily: '"Google Sans", sans-serif',
-                      fontWeight: 500,
-                      fontSize: '14px',
-                      lineHeight: '20px',
-                      letterSpacing: '0.1px',
-                      color: mode === 'dark' ? '#072e6f' : '#F0F4F8',
-                      whiteSpace: 'nowrap',
-                    }}>
-                      Details
-                    </span>
-                  </div>
-                )}
+                    Details
+                  </span>
+                </Box>
 
                 {/* Request Access Button */}
                 <Box

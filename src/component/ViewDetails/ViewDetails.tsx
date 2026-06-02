@@ -450,10 +450,12 @@ useEffect(() => {
     // eslint-disable-next-line no-console
     console.log('[ACCESS-GATE] entry=%s checkStatus=%s hasAccess=%s userHasAccessFlag=%s => denied=%s',
       entry.name, cached?.status, cached?.hasAccess, (entry as any)?.userHasAccess, denied);
-    if (denied) {
-      triggerNoAccess({ message: "You don't have access to this resource" });
-      navigate('/search', { replace: true });
-    }
+    // NOTE: We deliberately DO NOT bounce the user off the detail page when they
+    // lack access. A data catalog must let users browse an asset's metadata
+    // (schema, description, aspects, lineage) so they can discover it and then
+    // request access. The actual data rows are still governed by BigQuery IAM.
+    // (Previously this redirected to /search, which made "no access" look like
+    // "the detail page is broken / shows nothing".)
   }, [entryStatus, entry, accessCheckCache, triggerNoAccess, navigate]);
 
   // Handle case where entry is already loaded from persistence
