@@ -117,6 +117,9 @@ const ViewDetails = () => {
   const tabNameApplied = React.useRef(false);
   const [tabValue, setTabValue] = React.useState(0);
   const [sampleTableData, setSampleTableData] = React.useState<any>();
+  // True when the authoritative check-entry-access says the user has no access:
+  // schema/metadata stay visible, but the actual data rows are locked.
+  const [accessDenied, setAccessDenied] = React.useState(false);
   const [filteredEntry, setFilteredEntry] = useState<any>(null);
   const [loading, setLoading] = React.useState<boolean>(true);
   const [expandedAnnotations, setExpandedAnnotations] = useState<Set<string>>(new Set());
@@ -325,7 +328,7 @@ let annotationTab = <PreviewAnnotation
   expandedItems={expandedAnnotations}
   setExpandedItems={setExpandedAnnotations}
 
-/>;  let overviewTab = <DetailPageOverview entry={displayEntry} css={{width:"100%"}} sampleTableData={sampleTableData} noTopSpacing={true}/>;
+/>;  let overviewTab = <DetailPageOverview entry={displayEntry} css={{width:"100%"}} sampleTableData={sampleTableData} accessDenied={accessDenied} noTopSpacing={true}/>;
   
 //   useEffect(() => {
 //     if(getEntryType(entry.name, '/') == 'Tables') {
@@ -406,9 +409,8 @@ useEffect(() => {
   if(entryStatus === 'succeeded') {
       // schema = <Schema entry={entry} css={{width:"100%"}} />;
       setLoading(false);
-      if(getEntryType(entry.name, '/') == 'Tables' && entry.entrySource?.system != undefined && entry.entrySource?.system != "undefined" && entry.entrySource?.system.toLowerCase() === 'bigquery') {
-        dispatch(getSampleData({fqn: entry.fullyQualifiedName, id_token: id_token}));
-      }
+      // NOTE: sample-data fetch moved to an access-gated effect below so we never
+      // fetch/return actual rows to a user who lacks access to the table.
       // console.log("loader:", loading);
   }
 }, [entryStatus, isAssetPreviewOpen]);
@@ -450,13 +452,32 @@ useEffect(() => {
     // eslint-disable-next-line no-console
     console.log('[ACCESS-GATE] entry=%s checkStatus=%s hasAccess=%s userHasAccessFlag=%s => denied=%s',
       entry.name, cached?.status, cached?.hasAccess, (entry as any)?.userHasAccess, denied);
-    // NOTE: We deliberately DO NOT bounce the user off the detail page when they
-    // lack access. A data catalog must let users browse an asset's metadata
-    // (schema, description, aspects, lineage) so they can discover it and then
-    // request access. The actual data rows are still governed by BigQuery IAM.
-    // (Previously this redirected to /search, which made "no access" look like
-    // "the detail page is broken / shows nothing".)
+    // We deliberately DO NOT bounce the user off the detail page. A data catalog
+    // must let users browse an asset's metadata (schema, description, aspects,
+    // lineage) so they can discover it and request access. But the actual DATA
+    // (sample rows) is gated: `accessDenied` locks the Sample Data view and
+    // prevents the rows from being fetched at all (see the gated effect below).
+    setAccessDenied(denied);
   }, [entryStatus, entry, accessCheckCache, triggerNoAccess, navigate]);
+
+  // Access-gated sample-data fetch: only request rows once the authoritative
+  // access check has resolved AND the user is not denied. This guarantees a
+  // no-access user never receives the actual data, even over the network.
+  useEffect(() => {
+    if (isAssetPreviewOpen) return;
+    if (entryStatus !== 'succeeded' || !entry?.name || !id_token) return;
+    const isBqTable =
+      getEntryType(entry.name, '/') === 'Tables' &&
+      entry.entrySource?.system != undefined &&
+      entry.entrySource?.system != 'undefined' &&
+      entry.entrySource?.system.toLowerCase() === 'bigquery';
+    if (!isBqTable) return;
+    const cached = accessCheckCache[entry.name];
+    // Wait for the check to resolve; fetch only when access is confirmed.
+    if (!cached || cached.status !== 'succeeded') return;
+    if (cached.hasAccess === false) return;
+    dispatch(getSampleData({ fqn: entry.fullyQualifiedName, id_token: id_token }));
+  }, [entryStatus, entry?.name, accessCheckCache, id_token, isAssetPreviewOpen]);
 
   // Handle case where entry is already loaded from persistence
   useEffect(() => {
@@ -523,6 +544,10 @@ useEffect(() => {
       setFetchedEntryId(null);
       setAssetPreviewData(null);
       setIsAssetPreviewOpen(false);
+      // Reset access state and drop any prior rows so a no-access asset never
+      // briefly shows the previous (accessible) asset's data.
+      setAccessDenied(false);
+      setSampleTableData(undefined);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entry?.name]);

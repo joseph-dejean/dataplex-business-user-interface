@@ -330,48 +330,6 @@ const { date: updateDateShort, time: updateTimeShort } = formatTimeNoSeconds(ent
   );
 
   // If access denied, show permission denied UI (after all hooks are called)
-  if (accessDenied) {
-    return (
-      <Box
-        sx={{
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          justifyContent: "center",
-          padding: "60px 40px",
-          gap: "16px",
-          minHeight: "300px",
-          backgroundColor: "#FAFAFA",
-          borderRadius: "8px",
-          margin: "16px",
-        }}
-      >
-        <LockOutlinedIcon sx={{ fontSize: 56, color: "#5F6368" }} />
-        <Typography
-          variant="h6"
-          sx={{
-            color: "#3C4043",
-            fontFamily: "'Google Sans', sans-serif",
-            fontWeight: 500,
-          }}
-        >
-          Access Denied
-        </Typography>
-        <Typography
-          variant="body2"
-          sx={{
-            color: "#5F6368",
-            fontFamily: "'Google Sans', sans-serif",
-            textAlign: "center",
-            maxWidth: "400px",
-          }}
-        >
-          You don&apos;t have permission to view this resource. Contact your administrator if you need access.
-        </Typography>
-      </Box>
-    );
-  }
-
   let sampleDataView = <div style={{padding:"10px"}}>Sample Data is not available.</div>;
   
   // Safe data processing with error handling
@@ -569,6 +527,23 @@ const { date: updateDateShort, time: updateTimeShort } = formatTimeNoSeconds(ent
     }
   } else {
     sampleDataView = <div style={{paddingTop:"48px", paddingLeft: "410px", fontSize:'14px', color: "#575757"}}>No Data available for this table</div>;
+  }
+
+  // Access gate for the ACTUAL DATA only: schema/metadata stay visible for
+  // discovery, but sample rows require access. Without it, show a locked panel
+  // prompting the user to request access (data stays protected by BigQuery IAM).
+  if (accessDenied) {
+    sampleDataView = (
+      <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "40px", gap: "12px", minHeight: "200px" }}>
+        <LockOutlinedIcon sx={{ fontSize: 40, color: "#5F6368" }} />
+        <Typography variant="body2" sx={{ color: "#3C4043", fontFamily: "'Google Sans', sans-serif", fontWeight: 500 }}>
+          You don&apos;t have access to this data
+        </Typography>
+        <Typography variant="body2" sx={{ color: "#5F6368", fontFamily: "'Google Sans', sans-serif", textAlign: "center", maxWidth: "360px" }}>
+          You can view this asset&apos;s schema and metadata. Request access to preview the actual rows.
+        </Typography>
+      </Box>
+    );
   }
 
   return (
