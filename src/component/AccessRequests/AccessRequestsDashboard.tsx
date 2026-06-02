@@ -509,13 +509,32 @@ const AccessRequestsDashboard: React.FC = () => {
                       <div style={{ fontSize: '0.75rem', color: '#5F6368' }}>{request.projectId}</div>
                     </TableCell>
                     <TableCell>
-                      {request.assetType === 'data_product' ? (
-                        <Chip label="Data Product" size="small" sx={{ fontSize: '11px', height: '22px', backgroundColor: '#e8f0fe', color: '#1967d2', fontWeight: 600 }} />
-                      ) : request.assetType ? (
-                        <Chip label={request.assetType} size="small" variant="outlined" sx={{ fontSize: '11px', height: '22px' }} />
-                      ) : (
-                        <Typography variant="caption" sx={{ color: '#9AA0A6' }}>—</Typography>
-                      )}
+                      {(() => {
+                        // Determine the asset type, deriving Table/Dataset from
+                        // the asset name when it wasn't stored (e.g. old requests).
+                        let label = '';
+                        if (request.assetType === 'data_product' || (request as any).isDataProductRequest) {
+                          label = 'Data Product';
+                        } else if (request.assetType) {
+                          label = request.assetType;
+                        } else {
+                          const raw = String(request.assetName || (request as any).linkedResource || '');
+                          if (raw.includes('/tables/')) label = 'Table';
+                          else if (raw.includes('/datasets/')) label = 'Dataset';
+                          else {
+                            const parts = raw.replace(/^bigquery:/, '').split('.');
+                            if (parts.length >= 3) label = 'Table';
+                            else if (parts.length === 2) label = 'Dataset';
+                          }
+                        }
+                        if (label === 'Data Product') {
+                          return <Chip label="Data Product" size="small" sx={{ fontSize: '11px', height: '22px', backgroundColor: '#e8f0fe', color: '#1967d2', fontWeight: 600 }} />;
+                        }
+                        if (label) {
+                          return <Chip label={label} size="small" variant="outlined" sx={{ fontSize: '11px', height: '22px' }} />;
+                        }
+                        return <Typography variant="caption" sx={{ color: '#9AA0A6' }}>—</Typography>;
+                      })()}
                     </TableCell>
                     <TableCell>
                       <Typography variant="body2" sx={{ color: '#1F1F1F' }}>{request.requesterEmail}</Typography>
