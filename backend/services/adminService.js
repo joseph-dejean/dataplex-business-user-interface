@@ -413,7 +413,13 @@ const isUserASteward = async (email) => {
  * @param {string} email - User email
  * @returns {Object|null}
  */
-const resolveAdminRole = async (email) => {
+// Cache resolved admin roles per email. resolveAdminRole runs a ~3s Dataplex
+// steward search + IAM checks, and is called by several endpoints on every page
+// load, so without this it dominates app-open latency.
+const ADMIN_ROLE_TTL_MS = 5 * 60 * 1000;
+const adminRoleCache = new Map(); // email -> { value, expiresAt } | { promise }
+
+const resolveAdminRoleUncached = async (email) => {
     if (!email) return null;
 
     // 1. Check Firestore (Primary Source of Truth)
@@ -470,6 +476,32 @@ const resolveAdminRole = async (email) => {
     }
 
     return null;
+};
+
+/**
+ * Cached + in-flight-deduped admin role resolution. Concurrent requests for the
+ * same email share one resolution, and the result is reused for ADMIN_ROLE_TTL_MS.
+ */
+const resolveAdminRole = async (email) => {
+    if (!email) return null;
+    const key = String(email).toLowerCase();
+    const now = Date.now();
+    const cached = adminRoleCache.get(key);
+    if (cached) {
+        if (cached.promise) return cached.promise;            // a resolution is already in flight
+        if (cached.expiresAt > now) return cached.value;      // fresh cached value
+    }
+    const promise = resolveAdminRoleUncached(email)
+        .then((value) => {
+            adminRoleCache.set(key, { value, expiresAt: Date.now() + ADMIN_ROLE_TTL_MS });
+            return value;
+        })
+        .catch((err) => {
+            adminRoleCache.delete(key);
+            throw err;
+        });
+    adminRoleCache.set(key, { promise });
+    return promise;
 };
 
 module.exports = {

@@ -1,11 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Paper, useMediaQuery, Box, Switch, Tooltip } from '@mui/material'
-import { Tune, Close, AutoAwesome } from '@mui/icons-material'
+import { Paper, useMediaQuery } from '@mui/material'
+import { Tune, Close } from '@mui/icons-material'
 import { useDispatch, useSelector } from 'react-redux'
 import FilterDropdown from '../Filter/FilterDropDown'
 import type { AppDispatch } from '../../app/store'
-import { searchResourcesByTerm, discoverySearch } from '../../features/resources/resourcesSlice'
-import { setSearchFiltersOpen, setAgentSearch } from '../../features/search/searchSlice'
+import { searchResourcesByTerm } from '../../features/resources/resourcesSlice'
+import { setSearchFiltersOpen } from '../../features/search/searchSlice'
 import { useAuth } from '../../auth/AuthProvider'
 import ResourceViewer from '../Common/ResourceViewer'
 import ResourcePreview from '../Common/ResourcePreview'
@@ -53,7 +53,6 @@ const SearchPage: React.FC = () => {
   const searchTerm = useSelector((state:any) => state.search.searchTerm);
   const searchType = useSelector((state:any) => state.search.searchType);
   const semanticSearch = useSelector((state:any) => state.search.semanticSearch);
-  const agentSearch = useSelector((state:any) => state.search.agentSearch);
   const searchSubmitted = useSelector((state: any) => state.search.searchSubmitted);
   const searchFilters = useSelector((state: any) => state.search.searchFilters);
   const mode = useSelector((state: any) => state.user.mode) as string;
@@ -76,29 +75,6 @@ const SearchPage: React.FC = () => {
   const handleFilterChange = useCallback((selectedFilters: any[]) => {
     setFilters(selectedFilters);
   }, []);
-
-  // Run the agent (discovery) search, but if it fails (e.g. the agent service
-  // isn't deployed / 503), fall back to the normal search so the user still
-  // gets results instead of an empty page.
-  const runAgentSearch = () => {
-    dispatch(discoverySearch({ term: searchTerm, id_token: id_token, userEmail: userEmail }))
-      .unwrap()
-      .catch(() => {
-        dispatch(searchResourcesByTerm({ term: searchTerm, id_token: id_token, userEmail: userEmail, filters: filters, semanticSearch: semanticSearch }));
-      });
-  };
-
-  // Toggle the ADK discovery agent search mode and re-run the current query.
-  const handleAgentToggle = (checked: boolean) => {
-    dispatch(setAgentSearch({ agentSearch: checked }));
-    if (searchTerm && searchTerm.trim() !== '') {
-      if (checked) {
-        runAgentSearch();
-      } else {
-        dispatch(searchResourcesByTerm({ term: searchTerm, id_token: id_token, userEmail: userEmail, filters: filters, semanticSearch: semanticSearch }));
-      }
-    }
-  };
 
   const handleTuneIconClick = (event: React.MouseEvent) => {
     event.preventDefault();
@@ -144,10 +120,7 @@ const SearchPage: React.FC = () => {
     // there is a term OR at least one active filter.
     const hasTerm = !!(searchTerm && searchTerm.trim() !== '');
     const hasFilters = Array.isArray(filters) && filters.length > 0;
-    if (agentSearch && hasTerm) {
-      // Agentic discovery search (ADK agent) — free-text only, with fallback.
-      runAgentSearch();
-    } else if (hasTerm || hasFilters) {
+    if (hasTerm || hasFilters) {
       dispatch(searchResourcesByTerm({term : searchTerm, id_token: id_token, userEmail: userEmail, filters: filters, semanticSearch: semanticSearch}) );
     }
     dispatch({ type: 'search/setSearchSubmitted', payload: false });
@@ -385,22 +358,6 @@ const SearchPage: React.FC = () => {
                     transition: 'margin-left 0.3s ease-in-out',
                     marginLeft: isFiltersOpen ? '252px' : '0px'
                 }}>
-                      <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 0.5, px: 2, pt: 1 }}>
-                        <Tooltip title="Agent search uses the Knowledge Catalog Discovery Agent: it decomposes your question into multiple semantic searches and returns richer, ranked results.">
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                            <AutoAwesome sx={{ fontSize: '1rem', color: agentSearch ? '#1a73e8' : '#9aa0a6' }} />
-                            <Box component="span" sx={{ fontSize: '0.8rem', color: agentSearch ? '#1a73e8' : '#5f6368', fontFamily: 'Google Sans, sans-serif' }}>
-                              Agent search
-                            </Box>
-                            <Switch
-                              size="small"
-                              checked={!!agentSearch}
-                              onChange={(e) => handleAgentToggle(e.target.checked)}
-                              inputProps={{ 'aria-label': 'Toggle agent search' }}
-                            />
-                          </Box>
-                        </Tooltip>
-                      </Box>
                       <ResourceViewer
                       resources={resources}
                       resourcesStatus={resourcesStatus}

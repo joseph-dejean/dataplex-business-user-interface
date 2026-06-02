@@ -580,12 +580,10 @@ app.post('/api/v1/chat', async (req, res) => {
                     }
                   });
                 }
-              } else if (t.textType === 'THOUGHT' && t.parts && t.parts[0]) {
-                // Thought messages - extract text from parts
-                const thoughtText = typeof t.parts[0] === 'string' ? t.parts[0] : t.parts[0]?.text;
-                if (thoughtText) {
-                  fullResponseText += `\n*Thought: ${thoughtText}*\n`;
-                }
+              } else if (t.textType === 'THOUGHT') {
+                // Internal model reasoning — do NOT surface it to the user
+                // (this was rendering "Thought: My Thought Process…" in the chat).
+                console.log('[CHAT] Skipping THOUGHT message in user-facing reply');
               }
             }
             // 2. Chart
@@ -1520,6 +1518,9 @@ app.post('/api/v1/check-iam-role', async (req, res) => {
     }
 
     let permissions = [];
+
+    // IAM API client (was referenced below but never defined -> "iam is not defined").
+    const iam = google.iam({ version: 'v1', auth: auth });
 
     // Expand each role into permissions (to simulate sub-roles)
     for (const role of userRoles) {
@@ -5524,7 +5525,10 @@ app.post('/api/v1/access-request/update', async (req, res) => {
         const userExists = accessList.some(entry => entry.userByEmail?.toLowerCase() === requesterEmail.toLowerCase());
         if (!userExists) {
           accessList.push({ role: 'READER', userByEmail: requesterEmail });
-          await dataset.setMetadata({ access: accessList });
+          // Write the FULL metadata back (preserving etag) — passing only
+          // { access } can fail/not persist. Matches gcpIamService pattern.
+          metadata.access = accessList;
+          await dataset.setMetadata(metadata);
           console.log(`[UPDATE] IAM READER access granted to ${requesterEmail}`);
         }
         iamStatus = 'SUCCESS';
@@ -5555,7 +5559,8 @@ app.post('/api/v1/access-request/update', async (req, res) => {
         accessList = accessList.filter(a => a.userByEmail?.toLowerCase() !== requesterEmail.toLowerCase());
 
         if (accessList.length < initialLength) {
-          await dataset.setMetadata({ access: accessList });
+          metadata.access = accessList;
+          await dataset.setMetadata(metadata);
           console.log(`[UPDATE] IAM access revoked for ${requesterEmail}`);
         }
         iamStatus = 'SUCCESS';
