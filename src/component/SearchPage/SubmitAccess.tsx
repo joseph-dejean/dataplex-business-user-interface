@@ -69,7 +69,7 @@ const SubmitAccess: React.FC<SubmitAccessProps> = ({ isOpen, onClose, assetName,
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [contactEmails, setContactEmails] = useState<string[]>([]);
-  const [success, setSuccess] = useState(false);
+  const [, setSuccess] = useState(false);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [localEntry, setLocalEntry] = useState<any>(null);
   const [isLoadingEntry, setIsLoadingEntry] = useState(false);
@@ -160,59 +160,39 @@ const SubmitAccess: React.FC<SubmitAccessProps> = ({ isOpen, onClose, assetName,
 
     try {
       console.log('Extracted contact emails:', contactEmails);
-      if(contactEmails.length > 0){
-        try{
-        const response = await axios.post(`${URLS.API_URL}${URLS.ACCESS_REQUEST}`, {
-            assetName,
-            message,
-            requesterEmail: user.email,
-            projectId: import.meta.env.VITE_GOOGLE_PROJECT_ID,
-            projectAdmin: contactEmails,
-            isDataProductRequest: isCalledFromDataProducts,
-            assetType: isCalledFromDataProducts ? 'data_product' : undefined,
-            // For data products, send the resource path so the backend can grant
-            // table-level access to every asset on approval (Option A).
-            linkedResource: isCalledFromDataProducts ? (dataProductResourceName || entry?.name || '') : undefined,
-            accessGroup: {accessGroupEmail: accessGroup, displayName: accessGroups.find(group => group.principal.googleGroup === accessGroup)?.displayName || accessGroup}
-          },{
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${user?.token || ''}`
-          }
-        });
-
-        const data = await response.data;
-        if (data.success) {
-          setSuccess(true);
-          console.log(success);
-          setMessage('');
-          onSubmitSuccess(assetName);
-          
-          // Close the panel after a short delay
-          setTimeout(() => {
-            onClose();
-            setSuccess(false);
-          }, 2000);
-        } else {
-          throw new Error(data.error || 'Failed to submit access request');
+      // Always create the request — even when no contacts are found. Contacts
+      // are only used to notify approvers; a missing contact must not silently
+      // drop the request (that was the "Continue does nothing" bug).
+      const response = await axios.post(`${URLS.API_URL}${URLS.ACCESS_REQUEST}`, {
+          assetName,
+          message,
+          requesterEmail: user.email,
+          projectId: import.meta.env.VITE_GOOGLE_PROJECT_ID,
+          projectAdmin: contactEmails,
+          isDataProductRequest: isCalledFromDataProducts,
+          assetType: isCalledFromDataProducts ? 'data_product' : undefined,
+          // For data products, send the resource path so the backend can grant
+          // table-level access to every asset on approval (Option A).
+          linkedResource: isCalledFromDataProducts ? (dataProductResourceName || entry?.name || '') : undefined,
+          accessGroup: {accessGroupEmail: accessGroup, displayName: accessGroups.find(group => group.principal.googleGroup === accessGroup)?.displayName || accessGroup}
+        },{
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${user?.token || ''}`
         }
-        
-      }catch(error){
-        console.log(error);
-        throw new Error('Failed to submit access request');
-      }
+      });
 
-      }else{
+      const data = await response.data;
+      if (data.success) {
         setSuccess(true);
-        console.log(success);
-        setMessage('Contacts/Emails not available for this entry');
+        setMessage('');
         onSubmitSuccess(assetName);
-        
-        // Close the panel after a short delay
         setTimeout(() => {
           onClose();
           setSuccess(false);
         }, 2000);
+      } else {
+        throw new Error(data.error || 'Failed to submit access request');
       }
     } catch (error) {
       console.error('Error submitting access request:', error);
@@ -233,7 +213,10 @@ const SubmitAccess: React.FC<SubmitAccessProps> = ({ isOpen, onClose, assetName,
 const { date: createDate, time: createTime } = getFormattedDateTimePartsByDateTime(previewData?.createTime);
 const { date: updateDate, time: updateTime } = getFormattedDateTimePartsByDateTime(previewData?.updateTime);
 
-return (previewData != null) ?(
+// Render the panel when we have preview data OR an asset name (the New Request
+// flow passes a name without preview data — previously this showed an endless
+// spinner, so "Continue" appeared to do nothing).
+return (previewData != null || !!assetName) ?(
     <Box
       sx={{
         position: 'fixed',

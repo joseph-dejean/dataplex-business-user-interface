@@ -5165,6 +5165,12 @@ app.get('/api/v1/access-requests', async (req, res) => {
 
         // Filter to only show requests for datasets they own
         allRequests = allRequests.filter(request => {
+          // Data-product requests have no project.dataset asset name, so the
+          // dataset-ownership filter below would drop them. Always show them to
+          // any admin/data-owner.
+          if (request.assetType === 'data_product' || request.isDataProductRequest) {
+            return true;
+          }
           const assetName = request.assetName || '';
           const cleanName = assetName.replace(/^bigquery:/, '');
           const parts = cleanName.split('.');

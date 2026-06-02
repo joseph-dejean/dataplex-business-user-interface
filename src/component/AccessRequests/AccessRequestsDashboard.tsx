@@ -72,8 +72,9 @@ const AccessRequestsDashboard: React.FC = () => {
   const [newRequestDialogOpen, setNewRequestDialogOpen] = useState<boolean>(false);
   // Searchable asset picker for the New Request dialog.
   const [assetInput, setAssetInput] = useState<string>('');
-  const [assetOptions, setAssetOptions] = useState<{ label: string; value: string; sub: string }[]>([]);
+  const [assetOptions, setAssetOptions] = useState<{ label: string; value: string; sub: string; entry?: any }[]>([]);
   const [assetSearching, setAssetSearching] = useState<boolean>(false);
+  const [selectedAssetEntry, setSelectedAssetEntry] = useState<any>(null);
 
   // Determine user role (admin, manager, or user)
   const userRole = user?.isAdmin || user?.role === 'admin' || user?.role === 'manager' ? 'admin' : 'user';
@@ -102,7 +103,7 @@ const AccessRequestsDashboard: React.FC = () => {
           const fqn = (e.fullyQualifiedName || '').replace(/^bigquery:/, '');
           const display = e.entrySource?.displayName || fqn.split('.').pop() || fqn;
           const type = (e.entryType || '').split('/').pop() || '';
-          return { label: display, value: fqn || display, sub: `${type ? type + ' · ' : ''}${fqn}` };
+          return { label: display, value: fqn || display, sub: `${type ? type + ' · ' : ''}${fqn}`, entry: e };
         }).filter((o: any) => o.value);
         // De-duplicate by value.
         const seen = new Set<string>();
@@ -684,6 +685,7 @@ const AccessRequestsDashboard: React.FC = () => {
             onChange={(_e, v) => {
               const val = typeof v === 'string' ? v : (v?.value || '');
               setNewRequestAssetName(val);
+              setSelectedAssetEntry(typeof v === 'string' ? null : (v?.entry || null));
             }}
             renderInput={(params) => (
               <TextField
@@ -725,9 +727,12 @@ const AccessRequestsDashboard: React.FC = () => {
         isOpen={isNewRequestOpen}
         onClose={() => setIsNewRequestOpen(false)}
         assetName={newRequestAssetName}
+        entry={selectedAssetEntry}
+        previewData={selectedAssetEntry}
         onSubmitSuccess={() => {
           setIsNewRequestOpen(false);
           setNewRequestAssetName('');
+          setSelectedAssetEntry(null);
           fetchAccessRequests();
         }}
       />
