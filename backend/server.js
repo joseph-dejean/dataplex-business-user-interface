@@ -3781,8 +3781,12 @@ app.post('/api/v1/search', async (req, res) => {
       console.log(`[SEARCH] Keyword search found ${searchResults.length} results`);
     }
 
-    // --- FALLBACK TO GEMINI IF NATIVE SEMANTIC SEARCH FAILS (opt-in only) ---
-    if (enableFallbacks && semanticSearch && searchResults.length === 0 && query && query !== '*') {
+    // --- NATURAL-LANGUAGE FALLBACK: if both semantic and keyword search found
+    // nothing, ask Gemini to turn the phrase into a keyword query and re-search.
+    // Runs ONLY on 0-result searches, so normal searches stay fast. This is what
+    // makes queries like "where is my finance asset" return finance tables.
+    // (The slower BigQuery INFORMATION_SCHEMA scan below stays opt-in.)
+    if (semanticSearch && searchResults.length === 0 && query && query !== '*') {
       try {
         console.log(`[SEARCH][GEMINI-FALLBACK] Initiating for query: "${query}"`);
         
