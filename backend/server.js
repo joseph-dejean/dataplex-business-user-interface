@@ -4977,6 +4977,53 @@ app.post('/api/v1/domains/unassign', async (req, res) => {
   }
 });
 
+/**
+ * POST /api/v1/asset-details
+ * Given a list of BigQuery asset resources (from a data product), return their
+ * catalog details (displayName, description) using the service account — so the
+ * data product Assets tab can show descriptions even for assets the user cannot
+ * directly access/search.
+ * Body: { resources: ["//bigquery.googleapis.com/projects/p/datasets/d/tables/t", ...] }
+ */
+app.post('/api/v1/asset-details', async (req, res) => {
+  try {
+    const { resources } = req.body;
+    if (!Array.isArray(resources) || resources.length === 0) {
+      return res.json({ assets: [] });
+    }
+    const fqns = resources
+      .map((r) => {
+        const m = String(r).match(/projects\/([^/]+)\/datasets\/([^/]+)\/tables\/([^/]+)/);
+        return m ? `bigquery:${m[1]}.${m[2]}.${m[3]}` : null;
+      })
+      .filter(Boolean);
+    if (fqns.length === 0) return res.json({ assets: [] });
+
+    const client = new CatalogServiceClient();
+    const query = `fully_qualified_name=(${fqns.join(' | ')})`;
+    const [results] = await client.searchEntries({
+      name: `projects/${PROJECT_ID}/locations/global`,
+      query,
+      pageSize: 200,
+      semanticSearch: false,
+    });
+    const assets = (results || []).map((r) => {
+      const e = r.dataplexEntry || r;
+      const src = e.entrySource || {};
+      return {
+        fullyQualifiedName: e.fullyQualifiedName || '',
+        resource: src.resource || '',
+        displayName: src.displayName || '',
+        description: src.description || '',
+      };
+    });
+    res.json({ assets });
+  } catch (error) {
+    console.error('[ASSET-DETAILS] error:', error.message);
+    res.status(500).json({ error: error.message, assets: [] });
+  }
+});
+
 app.post('/api/v1/access-request', async (req, res) => {
   try {
     const { assetName, linkedResource, message, requesterEmail, projectId, projectAdmin, assetType, isDataProductRequest, accessGroup } = req.body;

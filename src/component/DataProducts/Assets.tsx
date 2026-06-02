@@ -10,6 +10,7 @@ import DataProductAssets from './DataProductAssets';
 import ShimmerLoader from '../Shimmer/ShimmerLoader';
 import { useAuth } from '../../auth/AuthProvider';
 import axios from 'axios';
+import { URLS } from '../../constants/urls';
 
 /**
  * @file DetailPageOverview.tsx
@@ -200,38 +201,50 @@ const Assets: React.FC<AssetsProps> = ({ entry, css, onAssetPreviewChange  }) =>
                 };
             });
 
-            let searchTerm = 'fully_qualified_name=(' + a.join(' | ');
-            searchTerm += ')';
-            const requestResourceData = {
-                query: searchTerm,
-            }
+            // Enrich the assets with catalog details (display name + description)
+            // via the backend, which uses the service account — so descriptions
+            // appear even for assets the user can't directly access/search.
+            const resourcesArr = dataProductAssets.map((it: any) => it.resource);
             axios.post(
-            `https://dataplex.googleapis.com/v1/projects/${import.meta.env.VITE_GOOGLE_PROJECT_ID}/locations/global:searchEntries`,
-                requestResourceData,
+                `${URLS.API_URL}${URLS.ASSET_DETAILS}`,
+                { resources: resourcesArr },
                 {
                     headers: {
-                    Authorization: `Bearer ${user?.token}`,
-                    'Content-Type': 'application/json',
+                        Authorization: `Bearer ${user?.token}`,
+                        'Content-Type': 'application/json',
+                        'x-user-email': (user as any)?.email || '',
                     },
                 }
-            ).then((response:any) => {
-                const results = response.data?.results || [];
-                // Use the richer search results, but make sure every asset is
-                // present — append any not returned by the search.
-                const seen = new Set(
-                    results.map((r: any) => r.dataplexEntry?.fullyQualifiedName || r.dataplexEntry?.name).filter(Boolean)
-                );
-                const missing = baseList.filter(
-                    (b: any) => !seen.has(b.dataplexEntry.fullyQualifiedName) && !seen.has(b.dataplexEntry.name)
-                );
-                setDataProductsAssetsList([...results, ...missing] as any);
+            ).then((response: any) => {
+                const details = response.data?.assets || [];
+                const byFqn = new Map(details.map((d: any) => [d.fullyQualifiedName, d]));
+                const byRes = new Map(details.map((d: any) => [d.resource, d]));
+                const enriched = baseList.map((b: any) => {
+                    const d: any = byFqn.get(b.dataplexEntry.fullyQualifiedName)
+                        || byRes.get(b.dataplexEntry.name)
+                        || byRes.get(b.linkedResource);
+                    if (d) {
+                        return {
+                            ...b,
+                            dataplexEntry: {
+                                ...b.dataplexEntry,
+                                entrySource: {
+                                    ...b.dataplexEntry.entrySource,
+                                    displayName: d.displayName || b.dataplexEntry.entrySource.displayName,
+                                    description: d.description || '',
+                                },
+                            },
+                        };
+                    }
+                    return b;
+                });
+                setDataProductsAssetsList(enriched as any);
                 setTimeout(() => {
                   setAssetListLoader(true);
                 }, 300)
-
-            }).catch((error:any) => {
-                console.error('Error fetching data product assets details:', error);
-                // Search failed (e.g. no access) — still show the assets.
+            }).catch((error: any) => {
+                console.error('Error fetching data product asset details:', error);
+                // Enrichment failed — still show the assets (without descriptions).
                 setDataProductsAssetsList(baseList as any);
                 setAssetListLoader(true);
             });

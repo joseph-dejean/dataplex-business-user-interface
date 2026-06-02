@@ -81,6 +81,7 @@ export const URLS = {
 
     // Data-product domains (verticals: HR, Bank, Sales...)
     DOMAINS: '/domains',
+    ASSET_DETAILS: '/asset-details',
 
     // Notifications
     NOTIFICATIONS: '/notifications',
