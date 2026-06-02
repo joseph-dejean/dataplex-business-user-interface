@@ -179,6 +179,27 @@ const Assets: React.FC<AssetsProps> = ({ entry, css, onAssetPreviewChange  }) =>
                 let b = item.resource.includes('//') ? item.resource.split('projects/')[0].split('.')[0].slice(2) : 'bigquery';
                 return b + ':' + p;
             });
+
+            // Build a base list straight from the data product's asset resources
+            // so EVERY asset is shown — even ones the user can't access or that
+            // the enrichment search below doesn't return.
+            const baseList = dataProductAssets.map((item: any, i: number) => {
+                const fqn = a[i];
+                const clean = String(fqn).replace(/^bigquery:/, '');
+                const parts = clean.split('.');
+                const displayName = parts[parts.length - 1] || clean;
+                return {
+                    dataplexEntry: {
+                        name: item.resource,
+                        fullyQualifiedName: fqn,
+                        entryType: 'projects/dataplex-types/locations/global/entryTypes/bigquery-table',
+                        entrySource: { displayName, system: 'BIGQUERY', resource: item.resource },
+                    },
+                    linkedResource: item.resource,
+                    accessGroupConfigs: item.accessGroupConfigs,
+                };
+            });
+
             let searchTerm = 'fully_qualified_name=(' + a.join(' | ');
             searchTerm += ')';
             const requestResourceData = {
@@ -194,16 +215,25 @@ const Assets: React.FC<AssetsProps> = ({ entry, css, onAssetPreviewChange  }) =>
                     },
                 }
             ).then((response:any) => {
-                console.log('fet Ass', response.data);
-                //response.data.results.map()
-                setDataProductsAssetsList(response.data.results);
-                console.log(dataProductsAssetsList);
+                const results = response.data?.results || [];
+                // Use the richer search results, but make sure every asset is
+                // present — append any not returned by the search.
+                const seen = new Set(
+                    results.map((r: any) => r.dataplexEntry?.fullyQualifiedName || r.dataplexEntry?.name).filter(Boolean)
+                );
+                const missing = baseList.filter(
+                    (b: any) => !seen.has(b.dataplexEntry.fullyQualifiedName) && !seen.has(b.dataplexEntry.name)
+                );
+                setDataProductsAssetsList([...results, ...missing] as any);
                 setTimeout(() => {
                   setAssetListLoader(true);
                 }, 300)
-                
+
             }).catch((error:any) => {
                 console.error('Error fetching data product assets details:', error);
+                // Search failed (e.g. no access) — still show the assets.
+                setDataProductsAssetsList(baseList as any);
+                setAssetListLoader(true);
             });
         }
     }, [dataProductAssets, dataProductAssetsStatus]);
