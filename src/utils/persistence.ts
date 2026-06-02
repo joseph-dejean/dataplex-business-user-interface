@@ -116,12 +116,14 @@ export const loadStateFromStorage = (): PersistedState => {
   }
 };
 
-// Clear persisted state
+// Clear persisted state (cached results, entries, access checks) plus any
+// stray auth token. Used on logout and on account switch.
 export const clearPersistedState = () => {
   try {
     Object.values(PERSISTENCE_KEYS).forEach(key => {
       localStorage.removeItem(key);
     });
+    localStorage.removeItem('token');
   } catch (error) {
     console.warn('Failed to clear persisted state:', error);
   }

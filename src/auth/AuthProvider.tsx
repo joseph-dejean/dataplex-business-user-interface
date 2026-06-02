@@ -30,7 +30,7 @@ export const useAuth = ():AuthContextType => {
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const dispatch = useDispatch();
-  const { showSuccess, showError, showInfo } = useNotification();
+  const { showSuccess, showError } = useNotification();
 
   // Load stored data and ensure token timestamps exist
   const storedData = JSON.parse(localStorage.getItem('sessionUserData') || 'null');
@@ -71,6 +71,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         });
         const profile = profileRes.data;
 
+        // SECURITY: if a DIFFERENT account is signing in, the previous account's
+        // cached data (persisted search results, entries, and per-entry access
+        // checks) must not carry over. Detect the account change here; we clear
+        // the caches and reload below so the store re-initialises clean.
+        const prevSession = JSON.parse(localStorage.getItem('sessionUserData') || 'null');
+        const accountChanged = !!(prevSession?.email && prevSession.email !== profile.email);
+
         // Calculate token timestamps
         const tokenIssuedAt = Math.floor(Date.now() / 1000);
         const tokenExpiry = tokenIssuedAt + AUTH_CONFIG.TOKEN_LIFETIME_SECONDS;
@@ -98,6 +105,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         // Reset the auth notification flag on successful login
         setAuthNotificationShown(false);
 
+        if (accountChanged) {
+          // Wipe the previous account's persisted caches and reload so no stale
+          // results, entries or access checks leak into the new account.
+          clearPersistedState();
+          window.location.reload();
+          return;
+        }
+
         showSuccess('Successfully signed in!', 3000);
 
       } catch (err) {
@@ -115,8 +130,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     localStorage.removeItem('sessionUserData');
     setUser(null);
     clearPersistedState(); // Clear persisted Redux state
-    showInfo('You have been signed out.', 3000);
-  }, [dispatch, showInfo]);
+    // Hard-reload to the login page so the in-memory Redux store (which still
+    // holds the previous account's results/entries/access checks) is fully
+    // reset. Without this, signing in as another account on the same page load
+    // could still surface the previous account's data.
+    window.location.replace('/login');
+  }, [dispatch]);
 
   // Set up global authentication functions
   useEffect(() => {
