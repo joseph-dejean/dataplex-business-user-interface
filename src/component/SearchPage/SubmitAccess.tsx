@@ -61,9 +61,10 @@ interface SubmitAccessProps {
   dataProductsDescription?: string;
   assetCounts?: number;
   accessGroups?: any[];
+  dataProductResourceName?: string; // Data product resource path (for asset-level grant on approval)
 }
 
-const SubmitAccess: React.FC<SubmitAccessProps> = ({ isOpen, onClose, assetName, entry, onSubmitSuccess, previewData, isLookup, isCalledFromDataProducts = false, dataProductsDescription = '',assetCounts = 0 , accessGroups = [] }) => {
+const SubmitAccess: React.FC<SubmitAccessProps> = ({ isOpen, onClose, assetName, entry, onSubmitSuccess, previewData, isLookup, isCalledFromDataProducts = false, dataProductsDescription = '',assetCounts = 0 , accessGroups = [], dataProductResourceName = '' }) => {
   const [message, setMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -168,7 +169,11 @@ const SubmitAccess: React.FC<SubmitAccessProps> = ({ isOpen, onClose, assetName,
             projectId: import.meta.env.VITE_GOOGLE_PROJECT_ID,
             projectAdmin: contactEmails,
             isDataProductRequest: isCalledFromDataProducts,
-            accessGroup: {accessGroupEmail: accessGroup, displayName: accessGroups.find(group => group.principal.googleGroup === accessGroup)?.displayName || accessGroup} 
+            assetType: isCalledFromDataProducts ? 'data_product' : undefined,
+            // For data products, send the resource path so the backend can grant
+            // table-level access to every asset on approval (Option A).
+            linkedResource: isCalledFromDataProducts ? (dataProductResourceName || entry?.name || '') : undefined,
+            accessGroup: {accessGroupEmail: accessGroup, displayName: accessGroups.find(group => group.principal.googleGroup === accessGroup)?.displayName || accessGroup}
           },{
           headers: {
             'Content-Type': 'application/json',

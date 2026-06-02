@@ -491,7 +491,9 @@ const AccessRequestsDashboard: React.FC = () => {
                       <div style={{ fontSize: '0.75rem', color: '#5F6368' }}>{request.projectId}</div>
                     </TableCell>
                     <TableCell>
-                      {request.assetType ? (
+                      {request.assetType === 'data_product' ? (
+                        <Chip label="Data Product" size="small" sx={{ fontSize: '11px', height: '22px', backgroundColor: '#e8f0fe', color: '#1967d2', fontWeight: 600 }} />
+                      ) : request.assetType ? (
                         <Chip label={request.assetType} size="small" variant="outlined" sx={{ fontSize: '11px', height: '22px' }} />
                       ) : (
                         <Typography variant="caption" sx={{ color: '#9AA0A6' }}>—</Typography>

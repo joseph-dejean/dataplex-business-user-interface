@@ -4941,7 +4941,7 @@ app.post('/api/v1/domains/unassign', async (req, res) => {
 
 app.post('/api/v1/access-request', async (req, res) => {
   try {
-    const { assetName, linkedResource, message, requesterEmail, projectId, projectAdmin, assetType } = req.body;
+    const { assetName, linkedResource, message, requesterEmail, projectId, projectAdmin, assetType, isDataProductRequest, accessGroup } = req.body;
 
     // Validation
     if (!assetName || typeof assetName !== 'string' || assetName.trim() === '') {
@@ -5020,7 +5020,9 @@ app.post('/api/v1/access-request', async (req, res) => {
     const requestData = {
       id: requestId,
       assetName,
-      assetType: assetType || '',
+      assetType: isDataProductRequest ? 'data_product' : (assetType || ''),
+      isDataProductRequest: !!isDataProductRequest,
+      accessGroup: accessGroup || null,
       linkedResource: linkedResource || '',
       message: message || '',
       requesterEmail,
@@ -5233,9 +5235,34 @@ app.post('/api/v1/access-requests/delete-by-email', async (req, res) => {
 });
 
 /**
+ * List the BigQuery asset resources of a Dataplex data product.
+ * Accepts either a clean `projects/.../locations/.../dataProducts/{id}` path or
+ * a Dataplex entry path that contains one. Returns the asset resource strings
+ * (e.g. //bigquery.googleapis.com/projects/p/datasets/d/tables/t).
+ */
+async function getDataProductAssetResources(dpResourceName) {
+  if (!dpResourceName) return [];
+  const matches = String(dpResourceName).match(/projects\/[^/]+\/locations\/[^/]+\/dataProducts\/[^/]+/g);
+  const cleanPath = matches ? matches[matches.length - 1] : null;
+  if (!cleanPath) return [];
+  try {
+    const auth = new AdcGoogleAuth();
+    const client = await auth.getClient();
+    const url = `https://dataplex.googleapis.com/v1/${cleanPath}/dataAssets`;
+    const resp = await client.request({ url, method: 'GET' });
+    const assets = resp.data?.dataAssets || [];
+    return assets.map((a) => a.resource).filter(Boolean);
+  } catch (e) {
+    console.warn('[DP-ASSETS] Failed to list data product assets:', e.message);
+    return [];
+  }
+}
+
+/**
  * POST /api/v1/access-request/update
  * Approve or Reject access requests.
- * On APPROVE: Grants BigQuery dataset READER access, then updates Firestore, then sends email.
+ * On APPROVE: Grants access (table-level for a single table, every asset for a
+ * data product, else dataset-level), then updates Firestore, then sends email.
  * On REJECT: Updates Firestore, then sends email.
  */
 app.post('/api/v1/access-request/update', async (req, res) => {
@@ -5271,12 +5298,14 @@ app.post('/api/v1/access-request/update', async (req, res) => {
     const linkedResource = originalRequest.linkedResource || originalRequest.assetName || req.body.linkedResource || '';
     const requesterEmail = originalRequest.requesterEmail || '';
 
-    let iamProjectId, datasetId;
+    let iamProjectId, datasetId, tableId;
     if (linkedResource && requesterEmail) {
       const bqMatch = linkedResource.match(/projects\/([^/]+)\/datasets\/([^/]+)/);
       if (bqMatch && bqMatch.length >= 3) {
         iamProjectId = bqMatch[1];
         datasetId = bqMatch[2];
+        const tMatch = linkedResource.match(/datasets\/[^/]+\/tables\/([^/]+)/);
+        if (tMatch) tableId = tMatch[1];
       } else if (linkedResource.includes('bigquery:') || linkedResource.includes('bigquery://')) {
         const fqn = linkedResource.replace('bigquery://', '').replace('bigquery:', '');
         const parts = fqn.split('.');
@@ -5284,6 +5313,12 @@ app.post('/api/v1/access-request/update', async (req, res) => {
           iamProjectId = parts[0];
           datasetId = parts[1];
         }
+        if (parts.length >= 3) tableId = parts[2];
+      } else if (!linkedResource.includes('/')) {
+        // Plain "project.dataset.table" or "project.dataset" from the search picker.
+        const parts = linkedResource.replace(/^bigquery:/, '').split('.');
+        if (parts.length >= 2) { iamProjectId = parts[0]; datasetId = parts[1]; }
+        if (parts.length >= 3) tableId = parts[2];
       }
 
       // Fallback for Dataplex entries (glossary terms, data products, etc.)
@@ -5363,9 +5398,54 @@ app.post('/api/v1/access-request/update', async (req, res) => {
 
     // --- IAM PROVISIONING/REVOCATION ---
     let iamStatus = 'NOT_ATTEMPTED';
+    const isDpRequest = originalRequest.assetType === 'data_product' || originalRequest.isDataProductRequest;
 
     // ONLY grant IAM access if we reached full approval threshold
-    if (effectiveStatus === 'APPROVED' && iamProjectId && datasetId) {
+    if (effectiveStatus === 'APPROVED' && isDpRequest) {
+      // Option A: a data product grants access to ALL its assets. We grant
+      // table-level access on each asset so the user only gets that product's
+      // tables (not whole datasets).
+      try {
+        const dpResource = originalRequest.linkedResource || originalRequest.assetName || '';
+        const assetResources = await getDataProductAssetResources(dpResource);
+        let granted = 0;
+        for (const r of assetResources) {
+          const am = r.match(/projects\/([^/]+)\/datasets\/([^/]+)\/tables\/([^/]+)/);
+          if (am) { await grantTableAccess(am[1], am[2], am[3], requesterEmail); granted++; }
+        }
+        iamStatus = granted > 0 ? 'SUCCESS' : 'NO_ASSETS_GRANTED';
+        console.log(`[UPDATE] Data product approved: granted table access on ${granted}/${assetResources.length} asset(s) to ${requesterEmail}`);
+        await grantedAccessService.createGrantedAccess({
+          userEmail: requesterEmail,
+          assetName: originalRequest.assetName,
+          gcpProjectId: originalRequest.gcpProjectId || iamProjectId || '',
+          role: `roles/bigquery.dataViewer (data product: ${granted} assets)`,
+          grantedBy: reviewerEmail,
+          originalRequestId: requestId
+        });
+      } catch (dpErr) {
+        console.error('[UPDATE] Data product grant failed:', dpErr.message);
+        return res.status(500).json({ success: false, error: 'Failed to grant data product access.', details: dpErr.message });
+      }
+    } else if (effectiveStatus === 'APPROVED' && iamProjectId && datasetId && tableId) {
+      // Single-table request -> table-level grant (only that table).
+      try {
+        await grantTableAccess(iamProjectId, datasetId, tableId, requesterEmail);
+        iamStatus = 'SUCCESS';
+        console.log(`[UPDATE] Table-level access granted to ${requesterEmail} on ${iamProjectId}.${datasetId}.${tableId}`);
+        await grantedAccessService.createGrantedAccess({
+          userEmail: requesterEmail,
+          assetName: linkedResource,
+          gcpProjectId: iamProjectId,
+          role: 'roles/bigquery.dataViewer (table)',
+          grantedBy: reviewerEmail,
+          originalRequestId: requestId
+        });
+      } catch (iamError) {
+        console.error('[UPDATE] Table IAM grant failed:', iamError.message);
+        return res.status(500).json({ success: false, error: 'Failed to grant BigQuery table access.', details: iamError.message });
+      }
+    } else if (effectiveStatus === 'APPROVED' && iamProjectId && datasetId) {
       try {
         console.log(`[UPDATE] Granting BigQuery READER access: user=${requesterEmail}, project=${iamProjectId}, dataset=${datasetId}`);
         const bigqueryClient = new BigQuery({ projectId: iamProjectId });

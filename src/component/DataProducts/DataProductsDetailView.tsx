@@ -607,6 +607,7 @@ const tabProps = (index: number)  => {
           dataProductsDescription={selectedDataProductDetails?.entrySource?.description || ''}
           assetCounts={selectedDataProduct.assetCount || 0}
           accessGroups={Object.values(accessGroups) || []}
+          dataProductResourceName={selectedDataProduct?.name || selectedDataProductDetails?.name || ''}
         />)}
 
         {/* Notification Bar */}
