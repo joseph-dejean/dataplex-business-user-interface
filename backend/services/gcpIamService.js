@@ -167,13 +167,37 @@ const revokeDatasetAccess = async (projectId, datasetId, email, role = 'READER',
  * @param {string} [role] - IAM role, defaults to roles/bigquery.dataViewer.
  * @param {string} [userAccessToken]
  */
+/**
+ * Get an authenticated transport client for BigQuery table IAM REST calls.
+ * Uses the admin's OAuth token when provided, otherwise the service account.
+ */
+const getTableIamClient = async (userAccessToken) => {
+    if (userAccessToken) {
+        const oauth = new OAuth2Client();
+        oauth.setCredentials({ access_token: userAccessToken });
+        return oauth;
+    }
+    const auth = new GoogleAuth({ scopes: 'https://www.googleapis.com/auth/cloud-platform' });
+    return auth.getClient();
+};
+
+const bqTableIamBase = (projectId, datasetId, tableId) =>
+    `https://bigquery.googleapis.com/bigquery/v2/projects/${projectId}/datasets/${datasetId}/tables/${encodeURIComponent(tableId)}`;
+
 const grantTableAccess = async (projectId, datasetId, tableId, email, role = 'roles/bigquery.dataViewer', userAccessToken = null) => {
     console.log(`[TABLE-ACCESS] Granting ${role} on ${projectId}.${datasetId}.${tableId} to ${email}`);
     try {
-        const bigquery = createBigQueryClient(projectId, userAccessToken);
-        const table = bigquery.dataset(datasetId).table(tableId);
+        // The @google-cloud/bigquery Table object has no `.iam`; table-level IAM
+        // is only available via the REST tables.getIamPolicy/setIamPolicy.
+        const client = await getTableIamClient(userAccessToken);
+        const base = bqTableIamBase(projectId, datasetId, tableId);
 
-        const [policy] = await table.iam.getPolicy({ requestedPolicyVersion: 3 });
+        const getResp = await client.request({
+            url: `${base}:getIamPolicy`,
+            method: 'POST',
+            data: { options: { requestedPolicyVersion: 3 } },
+        });
+        const policy = getResp.data || {};
         policy.bindings = policy.bindings || [];
         const member = email.includes(':') ? email : `user:${email}`;
 
@@ -189,25 +213,31 @@ const grantTableAccess = async (projectId, datasetId, tableId, email, role = 'ro
         }
         binding.members.push(member);
 
-        await table.iam.setPolicy(policy);
+        await client.request({ url: `${base}:setIamPolicy`, method: 'POST', data: { policy } });
         console.log(`[TABLE-ACCESS] Granted ${role} on ${tableId} to ${email}`);
         return true;
     } catch (error) {
-        console.error('[TABLE-ACCESS] Error granting table access:', error);
-        throw new Error(`Failed to grant table access: ${error.message}`);
+        const detail = error.response?.data?.error?.message || error.message;
+        console.error('[TABLE-ACCESS] Error granting table access:', detail);
+        throw new Error(`Failed to grant table access: ${detail}`);
     }
 };
 
 /**
- * Revoke a user's access from a single BigQuery table.
+ * Revoke a user's access from a single BigQuery table (via REST table IAM).
  */
 const revokeTableAccess = async (projectId, datasetId, tableId, email, role = 'roles/bigquery.dataViewer', userAccessToken = null) => {
     console.log(`[TABLE-ACCESS] Revoking ${role} on ${projectId}.${datasetId}.${tableId} from ${email}`);
     try {
-        const bigquery = createBigQueryClient(projectId, userAccessToken);
-        const table = bigquery.dataset(datasetId).table(tableId);
+        const client = await getTableIamClient(userAccessToken);
+        const base = bqTableIamBase(projectId, datasetId, tableId);
 
-        const [policy] = await table.iam.getPolicy({ requestedPolicyVersion: 3 });
+        const getResp = await client.request({
+            url: `${base}:getIamPolicy`,
+            method: 'POST',
+            data: { options: { requestedPolicyVersion: 3 } },
+        });
+        const policy = getResp.data || {};
         const member = email.includes(':') ? email : `user:${email}`;
         let changed = false;
         for (const binding of policy.bindings || []) {
@@ -219,19 +249,19 @@ const revokeTableAccess = async (projectId, datasetId, tableId, email, role = 'r
                 }
             }
         }
-        // Drop now-empty bindings.
         policy.bindings = (policy.bindings || []).filter(b => (b.members || []).length > 0);
 
         if (!changed) {
             console.log(`[TABLE-ACCESS] ${email} had no ${role} on ${tableId}`);
             return true;
         }
-        await table.iam.setPolicy(policy);
+        await client.request({ url: `${base}:setIamPolicy`, method: 'POST', data: { policy } });
         console.log(`[TABLE-ACCESS] Revoked ${role} on ${tableId} from ${email}`);
         return true;
     } catch (error) {
-        console.error('[TABLE-ACCESS] Error revoking table access:', error);
-        throw new Error(`Failed to revoke table access: ${error.message}`);
+        const detail = error.response?.data?.error?.message || error.message;
+        console.error('[TABLE-ACCESS] Error revoking table access:', detail);
+        throw new Error(`Failed to revoke table access: ${detail}`);
     }
 };
 

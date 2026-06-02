@@ -321,8 +321,13 @@ const notifyAccessRejected = async (requestData, adminEmail, reason = '') => {
  * @param {string} adminEmail - Admin who revoked
  */
 const notifyAccessRevoked = async (grantData, adminEmail) => {
+    const recipient = grantData.userEmail || grantData.requesterEmail;
+    if (!recipient) {
+        console.warn('[NOTIFICATION] Skipping ACCESS_REVOKED — no recipient on grant/request');
+        return null;
+    }
     return createNotification({
-        recipientEmail: grantData.userEmail,
+        recipientEmail: recipient,
         type: NotificationType.ACCESS_REVOKED,
         title: 'Access Revoked',
         message: `Your access to ${grantData.assetName} has been revoked.`,

@@ -48,33 +48,12 @@ const grantDatasetAccess = async (projectId, datasetId, userEmail) => {
  * Helper: Grant READER access to a SINGLE table (not the whole dataset).
  * Uses table-level IAM so the user only gets the table they requested.
  */
+const { grantTableAccess: grantTableAccessIam } = require('../services/gcpIamService');
 const grantTableAccess = async (projectId, datasetId, tableId, userEmail) => {
-    try {
-        console.log(`[IAM-AUTO] Granting TABLE-level access. ${projectId}.${datasetId}.${tableId} -> ${userEmail}`);
-        const table = bigquery.dataset(datasetId, { projectId }).table(tableId);
-        const [policy] = await table.iam.getPolicy({ requestedPolicyVersion: 3 });
-        policy.bindings = policy.bindings || [];
-
-        const member = `user:${userEmail}`;
-        const role = 'roles/bigquery.dataViewer';
-        let binding = policy.bindings.find(b => b.role === role && !b.condition);
-        if (!binding) {
-            binding = { role, members: [] };
-            policy.bindings.push(binding);
-        }
-        binding.members = binding.members || [];
-        if (binding.members.includes(member)) {
-            console.log(`[IAM-AUTO] ${userEmail} already has table access to ${tableId}. Skipping.`);
-            return;
-        }
-        binding.members.push(member);
-
-        await table.iam.setPolicy(policy);
-        console.log(`[IAM-AUTO] Granted table-level dataViewer to ${userEmail} on ${tableId}`);
-    } catch (error) {
-        console.error(`[IAM-AUTO] FAILED to grant table access:`, error);
-        throw error;
-    }
+    // Delegate to the service implementation, which uses the BigQuery REST
+    // table IAM API (the Table object has no `.iam` accessor).
+    console.log(`[IAM-AUTO] Granting TABLE-level access. ${projectId}.${datasetId}.${tableId} -> ${userEmail}`);
+    return grantTableAccessIam(projectId, datasetId, tableId, userEmail);
 };
 
 /**
@@ -101,16 +80,11 @@ const handleAccessRequest = async (req, res) => {
             // Format example: //bigquery.googleapis.com/projects/my-project/datasets/my_dataset/tables/my_table
             // Or: projects/my-project/datasets/my_dataset
 
-            // Prefer table-level access when the request is for a specific
-            // table, so the user only gets that table — not the whole dataset.
-            const tableMatch = linkedResource.match(/projects\/([^/]+)\/datasets\/([^/]+)\/tables\/([^/]+)/);
+            // Grant at the dataset level (table-level IAM was rolled back as it
+            // caused access issues).
             const dsMatch = linkedResource.match(/projects\/([^/]+)\/datasets\/([^/]+)/);
 
-            if (tableMatch) {
-                await grantTableAccess(tableMatch[1], tableMatch[2], tableMatch[3], userEmail);
-            } else if (dsMatch && dsMatch.length >= 3) {
-                // No table in the resource — grant at the dataset level (e.g. the
-                // request was for a whole dataset).
+            if (dsMatch && dsMatch.length >= 3) {
                 await grantDatasetAccess(dsMatch[1], dsMatch[2], userEmail);
             } else {
                 console.error('[ADMIN-CTRL] Invalid linkedResource format:', linkedResource);

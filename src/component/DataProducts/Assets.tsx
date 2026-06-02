@@ -228,10 +228,16 @@ const Assets: React.FC<AssetsProps> = ({ entry, css, onAssetPreviewChange  }) =>
                             ...b,
                             dataplexEntry: {
                                 ...b.dataplexEntry,
+                                // Use the real Dataplex entry name + type so the asset
+                                // is clickable through to its detail page.
+                                name: d.name || b.dataplexEntry.name,
+                                entryType: d.entryType || b.dataplexEntry.entryType,
+                                fullyQualifiedName: d.fullyQualifiedName || b.dataplexEntry.fullyQualifiedName,
                                 entrySource: {
                                     ...b.dataplexEntry.entrySource,
                                     displayName: d.displayName || b.dataplexEntry.entrySource.displayName,
                                     description: d.description || '',
+                                    system: d.system || b.dataplexEntry.entrySource.system,
                                 },
                             },
                         };

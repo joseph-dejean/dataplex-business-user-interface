@@ -5011,10 +5011,13 @@ app.post('/api/v1/asset-details', async (req, res) => {
       const e = r.dataplexEntry || r;
       const src = e.entrySource || {};
       return {
+        name: e.name || '',                 // Dataplex entry name (for opening detail)
+        entryType: e.entryType || '',
         fullyQualifiedName: e.fullyQualifiedName || '',
         resource: src.resource || '',
         displayName: src.displayName || '',
         description: src.description || '',
+        system: src.system || '',
       };
     });
     res.json({ assets });
@@ -5493,48 +5496,22 @@ app.post('/api/v1/access-request/update', async (req, res) => {
 
     // ONLY grant IAM access if we reached full approval threshold
     if (effectiveStatus === 'APPROVED' && isDpRequest) {
-      // Option A: a data product grants access to ALL its assets. We grant
-      // table-level access on each asset so the user only gets that product's
-      // tables (not whole datasets).
+      // Data product approval: do NOT change BigQuery IAM. The per-asset table
+      // grant caused access problems, so approval only records the decision;
+      // data-product data access is managed via its access group, not here.
+      iamStatus = 'DATA_PRODUCT_APPROVED_NO_IAM';
+      console.log(`[UPDATE] Data product request approved (no automatic IAM change) for ${requesterEmail}`);
       try {
-        const dpResource = originalRequest.linkedResource || originalRequest.assetName || '';
-        const assetResources = await getDataProductAssetResources(dpResource);
-        let granted = 0;
-        for (const r of assetResources) {
-          const am = r.match(/projects\/([^/]+)\/datasets\/([^/]+)\/tables\/([^/]+)/);
-          if (am) { await grantTableAccess(am[1], am[2], am[3], requesterEmail); granted++; }
-        }
-        iamStatus = granted > 0 ? 'SUCCESS' : 'NO_ASSETS_GRANTED';
-        console.log(`[UPDATE] Data product approved: granted table access on ${granted}/${assetResources.length} asset(s) to ${requesterEmail}`);
         await grantedAccessService.createGrantedAccess({
           userEmail: requesterEmail,
           assetName: originalRequest.assetName,
           gcpProjectId: originalRequest.gcpProjectId || iamProjectId || '',
-          role: `roles/bigquery.dataViewer (data product: ${granted} assets)`,
+          role: 'data-product (approved, no IAM change)',
           grantedBy: reviewerEmail,
           originalRequestId: requestId
         });
-      } catch (dpErr) {
-        console.error('[UPDATE] Data product grant failed:', dpErr.message);
-        return res.status(500).json({ success: false, error: 'Failed to grant data product access.', details: dpErr.message });
-      }
-    } else if (effectiveStatus === 'APPROVED' && iamProjectId && datasetId && tableId) {
-      // Single-table request -> table-level grant (only that table).
-      try {
-        await grantTableAccess(iamProjectId, datasetId, tableId, requesterEmail);
-        iamStatus = 'SUCCESS';
-        console.log(`[UPDATE] Table-level access granted to ${requesterEmail} on ${iamProjectId}.${datasetId}.${tableId}`);
-        await grantedAccessService.createGrantedAccess({
-          userEmail: requesterEmail,
-          assetName: linkedResource,
-          gcpProjectId: iamProjectId,
-          role: 'roles/bigquery.dataViewer (table)',
-          grantedBy: reviewerEmail,
-          originalRequestId: requestId
-        });
-      } catch (iamError) {
-        console.error('[UPDATE] Table IAM grant failed:', iamError.message);
-        return res.status(500).json({ success: false, error: 'Failed to grant BigQuery table access.', details: iamError.message });
+      } catch (e) {
+        console.warn('[UPDATE] createGrantedAccess (data product) failed (non-blocking):', e.message);
       }
     } else if (effectiveStatus === 'APPROVED' && iamProjectId && datasetId) {
       try {
@@ -6216,11 +6193,9 @@ app.post('/api/v1/access/bulk-approve', async (req, res) => {
           datasetRole = 'OWNER';
         }
 
-        if (datasetId && tableId) {
-          // Table-level grant: only the requested table, not the whole dataset.
-          await grantTableAccess(fullRequest.gcpProjectId, datasetId, tableId, fullRequest.requesterEmail, requestedRole, userAccessToken);
-        } else if (datasetId) {
-          // Whole-dataset request — grant at the dataset level.
+        if (datasetId) {
+          // Grant at the dataset level (restored original behavior; table-level
+          // IAM was rolled back as it caused access issues).
           await grantDatasetAccess(fullRequest.gcpProjectId, datasetId, fullRequest.requesterEmail, datasetRole, userAccessToken);
         } else {
           // Fallback to project-level if can't parse dataset
