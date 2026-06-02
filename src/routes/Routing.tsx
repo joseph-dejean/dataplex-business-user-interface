@@ -27,6 +27,7 @@ import Glossaries from '../component/Glossaries/Glossaries';
 import ChatPage from '../component/ConversationalAnalytics/ChatPage';
 import DataProducts from '../component/DataProducts/DataProducts';
 import DataProductsDetailView from '../component/DataProducts/DataProductsDetailView';
+import DomainDetailPage from '../component/DataProducts/DomainDetailPage';
 import AccessRequestsDashboard from '../component/AccessRequests/AccessRequestsDashboard';
 import AdminAccessManagement from '../component/AdminPanel/AdminAccessManagement';
 import GlobalChatPage from '../component/GlobalChat/GlobalChatPage';
@@ -219,6 +220,19 @@ const Routing = () => {
             <SessionExpirationWrapper>
               <Layout searchBar={true}>
                 <DataProducts />
+              </Layout>
+            </SessionExpirationWrapper>
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/data-products/domain/:domainId"
+        element={
+          <ProtectedRoute>
+            <SessionExpirationWrapper>
+              <Layout searchBar={true}>
+                <DomainDetailPage />
               </Layout>
             </SessionExpirationWrapper>
           </ProtectedRoute>

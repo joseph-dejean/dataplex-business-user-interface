@@ -18,7 +18,8 @@ import {
   Add as AddIcon,
   MoreVert as MoreVertIcon,
   CreateNewFolderOutlined,
-  DeleteOutline
+  DeleteOutline,
+  OpenInNew as OpenInNewIcon
 } from '@mui/icons-material';
 import {
   fetchDomains, createDomain, deleteDomain,
@@ -816,7 +817,12 @@ const DataProducts = () => {
                                   <AccordionSummary expandIcon={<ExpandMore />} sx={{ backgroundColor: '#F8FAFD' }}>
                                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flex: 1, minWidth: 0 }}>
                                       <CreateNewFolderOutlined sx={{ color: '#0B57D0' }} />
-                                      <Typography sx={{ fontWeight: 600, color: '#1F1F1F' }}>{domain.name}</Typography>
+                                      <Typography
+                                        onClick={(e) => { e.stopPropagation(); navigate(`/data-products/domain/${encodeURIComponent(domain.id)}`); }}
+                                        sx={{ fontWeight: 600, color: '#0B57D0', cursor: 'pointer', '&:hover': { textDecoration: 'underline' } }}
+                                      >
+                                        {domain.name}
+                                      </Typography>
                                       <Typography variant="caption" sx={{ color: '#5f6368' }}>({items.length})</Typography>
                                       {domain.description && (
                                         <Typography variant="caption" sx={{ color: '#9aa0a6', ml: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -824,6 +830,13 @@ const DataProducts = () => {
                                         </Typography>
                                       )}
                                     </Box>
+                                    <Tooltip title="Open domain page">
+                                      <IconButton size="small" component="span"
+                                        onClick={(e) => { e.stopPropagation(); navigate(`/data-products/domain/${encodeURIComponent(domain.id)}`); }}
+                                        sx={{ mr: 0.5 }}>
+                                        <OpenInNewIcon fontSize="small" />
+                                      </IconButton>
+                                    </Tooltip>
                                     <Tooltip title="Delete domain">
                                       <IconButton size="small" component="span"
                                         onClick={(e) => { e.stopPropagation(); handleDeleteDomain(domain.id); }}
