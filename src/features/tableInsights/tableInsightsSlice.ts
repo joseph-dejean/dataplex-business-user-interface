@@ -34,8 +34,15 @@ export const fetchInsights = createAsyncThunk(
     requestData: { resourceId: string; id_token: string, scanName: string },
     { rejectWithValue, getState }
   ) => {
+    // When there is no real Data Documentation scan for the table, optionally
+    // show sample insights so the Insights tab is populated (like the Google
+    // demo). Disable with VITE_INSIGHTS_SAMPLE=false to require real scans.
+    const sampleEnabled = import.meta.env.VITE_INSIGHTS_SAMPLE !== 'false';
     if (!requestData?.resourceId || !requestData?.scanName || !requestData?.id_token) {
-      return { resourceId: '', data: null };
+      if (sampleEnabled && requestData?.resourceId) {
+        return { resourceId: requestData.resourceId, data: mockInsightsData.insights };
+      }
+      return { resourceId: requestData?.resourceId || '', data: null };
     }
 
     // Check if we already have data and it's not stale (5 minutes TTL)

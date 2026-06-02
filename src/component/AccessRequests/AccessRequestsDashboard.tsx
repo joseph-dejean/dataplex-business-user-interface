@@ -76,8 +76,27 @@ const AccessRequestsDashboard: React.FC = () => {
   const [assetSearching, setAssetSearching] = useState<boolean>(false);
   const [selectedAssetEntry, setSelectedAssetEntry] = useState<any>(null);
 
+  // Admin status can arrive asynchronously (set elsewhere after /admin/check),
+  // which made this page flip between admin and non-admin views. Resolve it here
+  // too so the dashboard is consistent regardless of how the user navigated in.
+  const [resolvedIsAdmin, setResolvedIsAdmin] = useState<boolean>(!!user?.isAdmin);
+  useEffect(() => {
+    if (!user?.email || !user?.token) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await axios.get(`${URLS.API_URL}${URLS.ADMIN_CHECK}`, {
+          params: { email: user.email },
+          headers: { Authorization: `Bearer ${user.token}`, 'x-user-email': user.email || '' },
+        });
+        if (!cancelled) setResolvedIsAdmin(!!(res.data?.isAdmin || res.data?.hasAdminCapabilities));
+      } catch { /* keep whatever we have */ }
+    })();
+    return () => { cancelled = true; };
+  }, [user?.email, user?.token]);
+
   // Determine user role (admin, manager, or user)
-  const userRole = user?.isAdmin || user?.role === 'admin' || user?.role === 'manager' ? 'admin' : 'user';
+  const userRole = (resolvedIsAdmin || user?.isAdmin || user?.role === 'admin' || user?.role === 'manager') ? 'admin' : 'user';
 
   useEffect(() => {
     fetchAccessRequests();
@@ -479,9 +498,7 @@ const AccessRequestsDashboard: React.FC = () => {
                   <TableCell><strong>Status</strong></TableCell>
                   <TableCell><strong>Submitted</strong></TableCell>
                   <TableCell><strong>Message</strong></TableCell>
-                  {userRole === 'admin' && (
-                    <TableCell align="right"><strong>Actions</strong></TableCell>
-                  )}
+                  <TableCell align="right"><strong>Actions</strong></TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -568,10 +585,10 @@ const AccessRequestsDashboard: React.FC = () => {
                         {request.message || '-'}
                       </Typography>
                     </TableCell>
-                    {(userRole === 'admin') && (
-                      <TableCell align="right">
-                       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 1 }}>
-                        {(request.status?.toLowerCase() === 'pending' || request.status?.toLowerCase() === 'partially_approved') ? (
+                    <TableCell align="right">
+                     <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 1 }}>
+                      {userRole === 'admin' && (
+                        (request.status?.toLowerCase() === 'pending' || request.status?.toLowerCase() === 'partially_approved') ? (
                           <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
                             <Button
                               size="small"
@@ -616,15 +633,17 @@ const AccessRequestsDashboard: React.FC = () => {
                           <Typography variant="caption" color="text.secondary">
                             {request.status?.toLowerCase() === 'revoked' ? 'Access Revoked' : 'Rejected'}
                           </Typography>
-                        )}
+                        )
+                      )}
+                      {(userRole === 'admin' || request.requesterEmail === user?.email) && (
                         <Tooltip title="Delete request">
                           <IconButton size="small" onClick={() => handleDeleteRequest(request.id)} sx={{ color: '#5f6368' }}>
                             <DeleteOutline fontSize="small" />
                           </IconButton>
                         </Tooltip>
-                       </Box>
-                      </TableCell>
-                    )}
+                      )}
+                     </Box>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>

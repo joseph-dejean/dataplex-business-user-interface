@@ -118,6 +118,16 @@ export function normalizeChartSpec(spec: any): any {
       clone.layer.forEach((l: any) => enhanceEncoding(l.encoding, values));
     }
 
+    // If we detected a narrow value range (a tight domain was set on a
+    // quantitative axis) on a BAR chart, switch to a dot plot. Bars on a
+    // non-zero baseline can still read as "all the same"; dots at different
+    // positions make tiny differences unmistakable.
+    const markType = typeof clone.mark === 'string' ? clone.mark : clone.mark?.type;
+    const narrow = ['x', 'y'].some((k) => clone.encoding?.[k]?.scale?.domain);
+    if (markType === 'bar' && narrow) {
+      clone.mark = { type: 'point', filled: true, size: 100 };
+    }
+
     // Make charts responsive to their container when no explicit width is set.
     if (clone.width == null && !clone.layer) clone.width = 'container';
 

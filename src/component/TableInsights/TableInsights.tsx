@@ -114,8 +114,10 @@ const TableInsights: React.FC<TableInsightsProps> = ({ entry, scanName }) => {
     return <TableInsightsSkeleton />;
   }
 
-  // No data state
-  if (!insightsData || insightsData.length === 0 || !mostRecentJob || scanName === null) {
+  // No data state. We no longer require a scanName here: when there's no real
+  // Data Documentation scan the slice may supply sample insights so the tab is
+  // still populated. If there's genuinely no data, show the empty state.
+  if (!insightsData || insightsData.length === 0 || !mostRecentJob) {
     return (
       <Box className="insights-empty-state">
         <Box className="insights-empty-state__content">
