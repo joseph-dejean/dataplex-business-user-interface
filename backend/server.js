@@ -3748,6 +3748,38 @@ app.post('/api/v1/search', async (req, res) => {
 
     console.log(`[SEARCH] Total unique results from all projects: ${searchResults.length}`);
 
+    // If native SEMANTIC search found nothing, retry with a plain Dataplex
+    // KEYWORD search (semanticSearch=false). Semantic/embedding matching often
+    // misses literal terms like a dataset/table name ("banque"); keyword search
+    // matches names/descriptions reliably. This is still pure Dataplex — no
+    // Gemini and no BigQuery scan — so it stays fast.
+    if (searchResults.length === 0 && semanticSearch && searchQuery && searchQuery !== '*') {
+      console.log('[SEARCH] Semantic returned 0; retrying with Dataplex keyword search');
+      const kwPromises = allProjects.map(async (projId) => {
+        try {
+          const [kw] = await client.searchEntries({
+            name: `projects/${projId}/locations/${location}`,
+            query: searchQuery,
+            pageSize: pageSize || 20,
+            pageToken: pageToken,
+            semanticSearch: false
+          });
+          return kw || [];
+        } catch (err) {
+          console.warn(`[SEARCH][KEYWORD] Failed for ${projId}:`, err.message);
+          return [];
+        }
+      });
+      const kwSeen = new Set();
+      searchResults = (await Promise.all(kwPromises)).flat().filter(entry => {
+        const name = entry?.dataplexEntry?.name || entry?.name;
+        if (!name || kwSeen.has(name)) return false;
+        kwSeen.add(name);
+        return true;
+      });
+      console.log(`[SEARCH] Keyword search found ${searchResults.length} results`);
+    }
+
     // --- FALLBACK TO GEMINI IF NATIVE SEMANTIC SEARCH FAILS (opt-in only) ---
     if (enableFallbacks && semanticSearch && searchResults.length === 0 && query && query !== '*') {
       try {

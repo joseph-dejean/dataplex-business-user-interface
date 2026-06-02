@@ -54,13 +54,16 @@ export const searchResourcesByTerm = createAsyncThunk('resources/searchResources
           if(filter.type === 'aspectType') {
             //let aspect = filter.name.replace(' ', '-');
             const name = getAspectName(filter.name);
-            if(filter.subAnnotationData && filter.subAnnotationData.length > 0) {
+            // Skip aspect filters that don't resolve to a real aspect name.
+            // Emitting "(has=)" produced a malformed query ("banque ((has=))")
+            // that made Dataplex return 0 results.
+            if(name && filter.subAnnotationData && filter.subAnnotationData.length > 0) {
               filter.subAnnotationData.forEach((subAspect:any) => {
                 let subAspectName = `${name}.${subAspect.fieldName}`;
                 let subAspectNameVal = subAspect.enabled ? (subAspect.filterType == 'include' ? `(${subAspectName}:${subAspect.value})` : `-(${subAspectName}:${subAspect.value})`) : '';
                 aspectType += (aspectType != '' ? '|' : '') + `(has=${name} AND ${subAspectNameVal})`;
               });
-            }else {
+            }else if (name) {
               aspectType += (aspectType != '' ? '|' : '') + `(has=${name})`;
             }
             // Non-semantic search filter syntax (commented out — kept for future re-enabling)
