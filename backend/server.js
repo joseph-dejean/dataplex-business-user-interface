@@ -3677,9 +3677,14 @@ app.post('/api/v1/search', async (req, res) => {
   try {
     const { query, pageSize, pageToken, semanticSearch } = req.body;
     const userEmail = req.headers['x-user-email'];
+    // Basic search = pure Dataplex (fast). The Gemini rewrite + BigQuery
+    // INFORMATION_SCHEMA scan only run when explicitly opted in (they were the
+    // cause of slow ~15s searches on a 0-result query). Gemini stays reserved
+    // for the agentic discovery search.
+    const enableFallbacks = req.body.enableFallbacks === true;
 
     console.log('======== [SEARCH START] ========');
-    console.log(`[SEARCH] Query: ${query}, User: ${userEmail}, SemanticSearch: ${semanticSearch}`);
+    console.log(`[SEARCH] Query: ${query}, User: ${userEmail}, SemanticSearch: ${semanticSearch}, Fallbacks: ${enableFallbacks}`);
 
     // Check Admin Status (Real IAM Check)
     const isAdmin = await checkUserAdminRole(userEmail);
@@ -3743,8 +3748,8 @@ app.post('/api/v1/search', async (req, res) => {
 
     console.log(`[SEARCH] Total unique results from all projects: ${searchResults.length}`);
 
-    // --- FALLBACK TO GEMINI IF NATIVE SEMANTIC SEARCH FAILS ---
-    if (semanticSearch && searchResults.length === 0 && query && query !== '*') {
+    // --- FALLBACK TO GEMINI IF NATIVE SEMANTIC SEARCH FAILS (opt-in only) ---
+    if (enableFallbacks && semanticSearch && searchResults.length === 0 && query && query !== '*') {
       try {
         console.log(`[SEARCH][GEMINI-FALLBACK] Initiating for query: "${query}"`);
         
@@ -3825,10 +3830,11 @@ Return JSON: {"dataplexQuery": "your optimized query string"}`;
       }
     }
 
-    // --- BIGQUERY INFORMATION_SCHEMA FALLBACK ---
+    // --- BIGQUERY INFORMATION_SCHEMA FALLBACK (opt-in only) ---
     // If Dataplex returned 0 results (catalog not accessible or not set up),
-    // fall back to BigQuery INFORMATION_SCHEMA so users can always discover tables.
-    if (searchResults.length === 0 && query && query !== '*') {
+    // optionally fall back to BigQuery INFORMATION_SCHEMA. Off by default so a
+    // no-result basic search returns fast instead of scanning every dataset.
+    if (enableFallbacks && searchResults.length === 0 && query && query !== '*') {
       console.log(`[SEARCH][BQ-FALLBACK] Dataplex returned 0 results. Falling back to BigQuery INFORMATION_SCHEMA for query: "${query}"`);
       try {
         const bq = new BigQuery({ projectId: PROJECT_ID });
