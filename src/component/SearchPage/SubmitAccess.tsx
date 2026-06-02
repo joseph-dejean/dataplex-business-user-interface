@@ -170,7 +170,15 @@ const SubmitAccess: React.FC<SubmitAccessProps> = ({ isOpen, onClose, assetName,
           projectId: import.meta.env.VITE_GOOGLE_PROJECT_ID,
           projectAdmin: contactEmails,
           isDataProductRequest: isCalledFromDataProducts,
-          assetType: isCalledFromDataProducts ? 'data_product' : undefined,
+          assetType: isCalledFromDataProducts
+            ? 'data_product'
+            : (() => {
+                const et = String(entry?.entryType || previewData?.entryType || '').toLowerCase();
+                if (et.includes('view')) return 'View';
+                if (et.includes('table')) return 'Table';
+                if (et.includes('dataset')) return 'Dataset';
+                return undefined;
+              })(),
           // Always send a resource that identifies the BigQuery dataset, so the
           // backend can actually grant access on approval. Without this the
           // request only carried the table name (e.g. "client") with no dataset,

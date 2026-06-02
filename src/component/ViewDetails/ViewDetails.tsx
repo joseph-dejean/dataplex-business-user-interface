@@ -434,15 +434,22 @@ useEffect(() => {
   useEffect(() => {
     if (entryStatus !== 'succeeded' || !entry?.name) return;
     const cached = accessCheckCache[entry.name];
-    const userHasAccessFlag = (entry as any)?.userHasAccess;
     const entryTypeStr: string = (entry as any)?.entryType || '';
     const isGlossaryLike = /glossary|category|term/i.test(entryTypeStr);
+    // Block ONLY on a definitive "no access" from the authoritative
+    // check-entry-access call. We intentionally do NOT block on:
+    //  - a FAILED/errored check (could be a transient error) — fail open, the
+    //    underlying data is still protected by BigQuery IAM, and
+    //  - the entry.userHasAccess search-annotation flag, which only looks at
+    //    dataset userByEmail and wrongly excludes project owners.
     const denied =
-      !isGlossaryLike && (
-        cached?.status === 'failed' ||
-        (cached?.status === 'succeeded' && cached.hasAccess === false) ||
-        userHasAccessFlag === false
-      );
+      !isGlossaryLike &&
+      cached?.status === 'succeeded' &&
+      cached.hasAccess === false;
+    // Debug: surface what the access decision was (visible in the browser console).
+    // eslint-disable-next-line no-console
+    console.log('[ACCESS-GATE] entry=%s checkStatus=%s hasAccess=%s userHasAccessFlag=%s => denied=%s',
+      entry.name, cached?.status, cached?.hasAccess, (entry as any)?.userHasAccess, denied);
     if (denied) {
       triggerNoAccess({ message: "You don't have access to this resource" });
       navigate('/search', { replace: true });

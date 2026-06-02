@@ -518,7 +518,7 @@ const AccessRequestsDashboard: React.FC = () => {
                         } else if (request.assetType) {
                           label = request.assetType;
                         } else {
-                          const raw = String(request.assetName || (request as any).linkedResource || '');
+                          const raw = String((request as any).linkedResource || request.assetName || '');
                           if (raw.includes('/tables/')) label = 'Table';
                           else if (raw.includes('/datasets/')) label = 'Dataset';
                           else {

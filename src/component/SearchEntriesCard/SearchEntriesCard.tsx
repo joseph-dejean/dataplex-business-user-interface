@@ -203,16 +203,17 @@ const SearchEntriesCard: React.FC<SearchEntriesCardProps> = ({ entry, sx, isSele
   const entryAccessStatus = entryAccessCached?.status as string | undefined;
   const isAccessConfirmed = entryAccessStatus === 'succeeded' && entryAccessCached?.hasAccess !== false;
   const isAccessLoading = entryAccessStatus === 'loading';
-  const entryUserHasAccessFlag = (entry as any)?.userHasAccess ?? (entry as any)?.dataplexEntry?.userHasAccess;
   // Glossary / category / term entries are metadata-only — access gating does not apply.
   const rawEntryType: string = (entry as any)?.entryType || '';
   const isGlossaryLike = /glossary|category|term/i.test(rawEntryType);
+  // Deny ONLY on a definitive "no access" from the authoritative check. Do not
+  // block on a failed/errored check (transient) or on the userHasAccess search
+  // annotation (which ignores project owners) — that was blocking users who
+  // actually have access.
   const isAccessDenied =
-    !isGlossaryLike && (
-      entryAccessStatus === 'failed' ||
-      (entryAccessStatus === 'succeeded' && entryAccessCached?.hasAccess === false) ||
-      entryUserHasAccessFlag === false
-    );
+    !isGlossaryLike &&
+    entryAccessStatus === 'succeeded' &&
+    entryAccessCached?.hasAccess === false;
   const hasBigQueryTable = entry.name && getEntryType(entry.name, '/') === 'Tables'
     && entry.entrySource?.system?.toLowerCase() === 'bigquery';
   const bigQueryLink = generateBigQueryLink(entry);
