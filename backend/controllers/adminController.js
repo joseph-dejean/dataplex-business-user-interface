@@ -45,6 +45,39 @@ const grantDatasetAccess = async (projectId, datasetId, userEmail) => {
 };
 
 /**
+ * Helper: Grant READER access to a SINGLE table (not the whole dataset).
+ * Uses table-level IAM so the user only gets the table they requested.
+ */
+const grantTableAccess = async (projectId, datasetId, tableId, userEmail) => {
+    try {
+        console.log(`[IAM-AUTO] Granting TABLE-level access. ${projectId}.${datasetId}.${tableId} -> ${userEmail}`);
+        const table = bigquery.dataset(datasetId, { projectId }).table(tableId);
+        const [policy] = await table.iam.getPolicy({ requestedPolicyVersion: 3 });
+        policy.bindings = policy.bindings || [];
+
+        const member = `user:${userEmail}`;
+        const role = 'roles/bigquery.dataViewer';
+        let binding = policy.bindings.find(b => b.role === role && !b.condition);
+        if (!binding) {
+            binding = { role, members: [] };
+            policy.bindings.push(binding);
+        }
+        binding.members = binding.members || [];
+        if (binding.members.includes(member)) {
+            console.log(`[IAM-AUTO] ${userEmail} already has table access to ${tableId}. Skipping.`);
+            return;
+        }
+        binding.members.push(member);
+
+        await table.iam.setPolicy(policy);
+        console.log(`[IAM-AUTO] Granted table-level dataViewer to ${userEmail} on ${tableId}`);
+    } catch (error) {
+        console.error(`[IAM-AUTO] FAILED to grant table access:`, error);
+        throw error;
+    }
+};
+
+/**
  * Handle Access Request Approval/Rejection
  * Expects: { requestId, status, userEmail, linkedResource }
  */
@@ -68,22 +101,21 @@ const handleAccessRequest = async (req, res) => {
             // Format example: //bigquery.googleapis.com/projects/my-project/datasets/my_dataset/tables/my_table
             // Or: projects/my-project/datasets/my_dataset
 
-            let projectId, datasetId;
+            // Prefer table-level access when the request is for a specific
+            // table, so the user only gets that table — not the whole dataset.
+            const tableMatch = linkedResource.match(/projects\/([^/]+)\/datasets\/([^/]+)\/tables\/([^/]+)/);
+            const dsMatch = linkedResource.match(/projects\/([^/]+)\/datasets\/([^/]+)/);
 
-            // Regex to extract project and dataset
-            // Matches "projects/{project}/datasets/{dataset}" pattern which exists in both formats
-            const match = linkedResource.match(/projects\/([^/]+)\/datasets\/([^/]+)/);
-
-            if (match && match.length >= 3) {
-                projectId = match[1];
-                datasetId = match[2];
+            if (tableMatch) {
+                await grantTableAccess(tableMatch[1], tableMatch[2], tableMatch[3], userEmail);
+            } else if (dsMatch && dsMatch.length >= 3) {
+                // No table in the resource — grant at the dataset level (e.g. the
+                // request was for a whole dataset).
+                await grantDatasetAccess(dsMatch[1], dsMatch[2], userEmail);
             } else {
                 console.error('[ADMIN-CTRL] Invalid linkedResource format:', linkedResource);
                 return res.status(400).json({ error: 'Invalid resource format. Expected ...projects/{p}/datasets/{d}...' });
             }
-
-            // Perform IAM Update
-            await grantDatasetAccess(projectId, datasetId, userEmail);
         }
 
         // If IAM success (or if REJECTED), update Firestore

@@ -156,9 +156,89 @@ const revokeDatasetAccess = async (projectId, datasetId, email, role = 'READER',
 };
 
 /**
+ * Grant access to a SINGLE BigQuery table (not the whole dataset).
+ * Uses the table-level IAM policy so the user can only read the requested
+ * table, not every table in the dataset.
+ *
+ * @param {string} projectId
+ * @param {string} datasetId
+ * @param {string} tableId
+ * @param {string} email
+ * @param {string} [role] - IAM role, defaults to roles/bigquery.dataViewer.
+ * @param {string} [userAccessToken]
+ */
+const grantTableAccess = async (projectId, datasetId, tableId, email, role = 'roles/bigquery.dataViewer', userAccessToken = null) => {
+    console.log(`[TABLE-ACCESS] Granting ${role} on ${projectId}.${datasetId}.${tableId} to ${email}`);
+    try {
+        const bigquery = createBigQueryClient(projectId, userAccessToken);
+        const table = bigquery.dataset(datasetId).table(tableId);
+
+        const [policy] = await table.iam.getPolicy({ requestedPolicyVersion: 3 });
+        policy.bindings = policy.bindings || [];
+        const member = email.includes(':') ? email : `user:${email}`;
+
+        let binding = policy.bindings.find(b => b.role === role && !b.condition);
+        if (!binding) {
+            binding = { role, members: [] };
+            policy.bindings.push(binding);
+        }
+        binding.members = binding.members || [];
+        if (binding.members.includes(member)) {
+            console.log(`[TABLE-ACCESS] ${email} already has ${role} on ${tableId}`);
+            return true;
+        }
+        binding.members.push(member);
+
+        await table.iam.setPolicy(policy);
+        console.log(`[TABLE-ACCESS] Granted ${role} on ${tableId} to ${email}`);
+        return true;
+    } catch (error) {
+        console.error('[TABLE-ACCESS] Error granting table access:', error);
+        throw new Error(`Failed to grant table access: ${error.message}`);
+    }
+};
+
+/**
+ * Revoke a user's access from a single BigQuery table.
+ */
+const revokeTableAccess = async (projectId, datasetId, tableId, email, role = 'roles/bigquery.dataViewer', userAccessToken = null) => {
+    console.log(`[TABLE-ACCESS] Revoking ${role} on ${projectId}.${datasetId}.${tableId} from ${email}`);
+    try {
+        const bigquery = createBigQueryClient(projectId, userAccessToken);
+        const table = bigquery.dataset(datasetId).table(tableId);
+
+        const [policy] = await table.iam.getPolicy({ requestedPolicyVersion: 3 });
+        const member = email.includes(':') ? email : `user:${email}`;
+        let changed = false;
+        for (const binding of policy.bindings || []) {
+            if (binding.role === role && Array.isArray(binding.members)) {
+                const next = binding.members.filter(m => m !== member);
+                if (next.length !== binding.members.length) {
+                    binding.members = next;
+                    changed = true;
+                }
+            }
+        }
+        // Drop now-empty bindings.
+        policy.bindings = (policy.bindings || []).filter(b => (b.members || []).length > 0);
+
+        if (!changed) {
+            console.log(`[TABLE-ACCESS] ${email} had no ${role} on ${tableId}`);
+            return true;
+        }
+        await table.iam.setPolicy(policy);
+        console.log(`[TABLE-ACCESS] Revoked ${role} on ${tableId} from ${email}`);
+        return true;
+    } catch (error) {
+        console.error('[TABLE-ACCESS] Error revoking table access:', error);
+        throw new Error(`Failed to revoke table access: ${error.message}`);
+    }
+};
+
+/**
  * Grant an IAM role to a user on a specific project.
  * NOTE: This grants project-level access. For more granular access, use grantDatasetAccess.
- * 
+ *
  * @param {string} projectId - The GCP Project ID.
  * @param {string} email - The email of the user or service account.
  * @param {string} role - The IAM role to grant (e.g., 'roles/bigquery.dataViewer').
@@ -458,6 +538,9 @@ module.exports = {
     // Dataset-level access (recommended - more granular)
     grantDatasetAccess,
     revokeDatasetAccess,
+    // Table-level access (most granular — only the requested table)
+    grantTableAccess,
+    revokeTableAccess,
     // Project-level IAM (grants access to all datasets in project)
     grantIamAccess,
     revokeIamAccess,

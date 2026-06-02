@@ -36,7 +36,7 @@ const authMiddleware = require('./middlewares/authMiddleware');
 const { querySampleFromBigQuery } = require('./utility');
 const { sendAccessRequestEmail, sendApprovalEmail, sendRejectionEmail, sendFeedbackEmail } = require('./services/emailService');
 const { createAccessRequest, getAccessRequests, updateAccessRequestStatus, getAccessRequestById } = require('./services/accessRequestService');
-const { grantDatasetAccess, revokeDatasetAccess, grantIamAccess, revokeIamAccess, getIamBindings, verifyUserAccess, checkUserRoles } = require('./services/gcpIamService');
+const { grantDatasetAccess, revokeDatasetAccess, grantTableAccess, grantIamAccess, revokeIamAccess, getIamBindings, verifyUserAccess, checkUserRoles } = require('./services/gcpIamService');
 
 // Roles that grant read access to BigQuery data for the UI access-gating checks.
 const ACCESS_ROLES = ['roles/owner', 'roles/editor', 'roles/viewer', 'roles/bigquery.dataViewer', 'roles/bigquery.admin'];
@@ -3831,13 +3831,16 @@ Return JSON: {"dataplexQuery": "your optimized query string"}`;
         const bq = new BigQuery({ projectId: PROJECT_ID });
         const bqFallbackResults = [];
 
-        for (const projId of allProjects) {
+        // Scan projects and datasets in parallel — the previous sequential
+        // nested loops were the main reason a no-result search took several
+        // seconds.
+        await Promise.all(allProjects.map(async (projId) => {
           try {
             // List all datasets in the project first
             const [datasets] = await bq.getDatasets({ projectId: projId });
             console.log(`[SEARCH][BQ-FALLBACK] Found ${datasets.length} datasets in project ${projId}`);
 
-            for (const dataset of datasets) {
+            await Promise.all(datasets.map(async (dataset) => {
               try {
                 const datasetId = dataset.id;
                 const [tables] = await dataset.getTables();
@@ -3872,11 +3875,11 @@ Return JSON: {"dataplexQuery": "your optimized query string"}`;
               } catch (tableErr) {
                 console.warn(`[SEARCH][BQ-FALLBACK] Failed to list tables for dataset ${dataset.id}:`, tableErr.message);
               }
-            }
+            }));
           } catch (dsErr) {
             console.warn(`[SEARCH][BQ-FALLBACK] Failed to list datasets for project ${projId}:`, dsErr.message);
           }
-        }
+        }));
 
         if (bqFallbackResults.length > 0) {
           console.log(`[SEARCH][BQ-FALLBACK] Found ${bqFallbackResults.length} matching tables via BigQuery API`);
@@ -5909,11 +5912,15 @@ app.post('/api/v1/access/bulk-approve', async (req, res) => {
         // Parse datasetId from assetName first (needed for permission check)
         // Formats: "bigquery:project.dataset.table", "project.dataset.table", etc.
         let datasetId = null;
+        let tableId = null;
         const assetName = fullRequest.assetName || '';
         const cleanName = assetName.replace(/^bigquery:/, '');
         const parts = cleanName.split('.');
         if (parts.length >= 2) {
           datasetId = parts[1]; // project.dataset.table -> dataset
+        }
+        if (parts.length >= 3) {
+          tableId = parts[2]; // project.dataset.table -> table
         }
 
         // Check admin permission (includes data owners)
@@ -5933,8 +5940,11 @@ app.post('/api/v1/access/bulk-approve', async (req, res) => {
           datasetRole = 'OWNER';
         }
 
-        if (datasetId) {
-          // Use admin's OAuth token to grant access (admin needs bigquery.dataOwner on dataset)
+        if (datasetId && tableId) {
+          // Table-level grant: only the requested table, not the whole dataset.
+          await grantTableAccess(fullRequest.gcpProjectId, datasetId, tableId, fullRequest.requesterEmail, requestedRole, userAccessToken);
+        } else if (datasetId) {
+          // Whole-dataset request — grant at the dataset level.
           await grantDatasetAccess(fullRequest.gcpProjectId, datasetId, fullRequest.requesterEmail, datasetRole, userAccessToken);
         } else {
           // Fallback to project-level if can't parse dataset
