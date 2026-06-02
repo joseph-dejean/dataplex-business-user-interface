@@ -171,9 +171,19 @@ const SubmitAccess: React.FC<SubmitAccessProps> = ({ isOpen, onClose, assetName,
           projectAdmin: contactEmails,
           isDataProductRequest: isCalledFromDataProducts,
           assetType: isCalledFromDataProducts ? 'data_product' : undefined,
-          // For data products, send the resource path so the backend can grant
-          // table-level access to every asset on approval (Option A).
-          linkedResource: isCalledFromDataProducts ? (dataProductResourceName || entry?.name || '') : undefined,
+          // Always send a resource that identifies the BigQuery dataset, so the
+          // backend can actually grant access on approval. Without this the
+          // request only carried the table name (e.g. "client") with no dataset,
+          // so approval granted nothing.
+          linkedResource: isCalledFromDataProducts
+            ? (dataProductResourceName || entry?.name || '')
+            : (entry?.entrySource?.resource
+               || previewData?.entrySource?.resource
+               || entry?.fullyQualifiedName
+               || previewData?.fullyQualifiedName
+               || entry?.name
+               || previewData?.name
+               || ''),
           accessGroup: {accessGroupEmail: accessGroup, displayName: accessGroups.find(group => group.principal.googleGroup === accessGroup)?.displayName || accessGroup}
         },{
         headers: {
