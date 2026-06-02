@@ -120,7 +120,7 @@ const FieldItem: React.FC<FieldItemProps> = ({
 
   // Render expanded content based on field type
   const renderExpandedContent = (): React.ReactNode => {
-    if (!fieldValue || typeof fieldValue !== 'object') return null;
+    if (fieldValue === null || fieldValue === undefined) return null;
 
     // Simple value types — show value text
     const simpleValueStyle: React.CSSProperties = {
@@ -132,6 +132,12 @@ const FieldItem: React.FC<FieldItemProps> = ({
       wordBreak: 'break-word',
       lineHeight: 1.5,
     };
+
+    // Plain primitive value (standard-JSON aspects store strings/numbers
+    // directly, e.g. data-product aspects like "Direction des Risques...").
+    if (typeof fieldValue !== 'object') {
+      return <div style={simpleValueStyle}>{String(fieldValue)}</div>;
+    }
 
     if (fieldValue.kind === 'stringValue') {
       return <div style={simpleValueStyle}>{fieldValue.stringValue}</div>;
@@ -283,6 +289,17 @@ const FieldItem: React.FC<FieldItemProps> = ({
           })}
         </div>
       );
+    }
+
+    // Fallback: object without a recognized protobuf kind (e.g. { stringValue }
+    // or a plain { responsables: "..." }). Show whatever simple value we can.
+    const simple = getSimpleDisplayValue(fieldValue);
+    if (simple !== null) {
+      return <div style={simpleValueStyle}>{simple}</div>;
+    }
+    const leaf = renderLeafKeyValuePairs(fieldValue as Record<string, any>);
+    if (leaf) {
+      return <div style={{ padding: '6px 0' }}>{leaf}</div>;
     }
 
     return null;
