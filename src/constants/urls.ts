@@ -48,6 +48,8 @@ export const URLS = {
     GET_ASPECT: '/aspect',
     GET_ACCESS_REQUESTS: '/access-requests',
     UPDATE_ACCESS_REQUEST: '/access-request/update',
+    DELETE_ACCESS_REQUEST: '/access-request', // + /:id
+    DELETE_ACCESS_REQUESTS_BY_EMAIL: '/access-requests/delete-by-email',
     GET_ASPECT_TYPES: '/aspect-types',
     UPDATE_ENTRY_ASPECTS: '/update-entry-aspects',
     LINEAGE_SEARCH_COLUMN_LEVEL: '/lineage-column-level',
@@ -76,6 +78,9 @@ export const URLS = {
     CREATE_DATA_PRODUCT: '/data-products',
     ADD_DATA_PRODUCT_ASSETS: '/data-products/assets',
     ENTRIES_BY_LOCATION: '/entries-by-location',
+
+    // Data-product domains (verticals: HR, Bank, Sales...)
+    DOMAINS: '/domains',
 
     // Notifications
     NOTIFICATIONS: '/notifications',

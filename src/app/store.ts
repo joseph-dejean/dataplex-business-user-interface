@@ -13,6 +13,7 @@ import glossariesReducer from '../features/glossaries/glossariesSlice';
 import dataProductsReducer from '../features/dataProducts/dataProductsSlice';
 import adminReducer from '../features/admin/adminSlice';
 import insightsReducer from '../features/tableInsights/tableInsightsSlice';
+import domainsReducer from '../features/domains/domainsSlice';
 import { loadStateFromStorage, saveStateToStorage } from '../utils/persistence';
 import { authMiddleware } from '../middleware/authMiddleware';
 
@@ -36,6 +37,7 @@ const store = configureStore({
     dataProducts: dataProductsReducer,
     admin: adminReducer,
     insights: insightsReducer,
+    domains: domainsReducer,
   },
   preloadedState: persistedState,
   middleware: (getDefaultMiddleware) => 

@@ -5,14 +5,26 @@ import {
   Tooltip, Menu, MenuItem,
   TextField, Skeleton,
   ToggleButton,
-  ToggleButtonGroup
+  ToggleButtonGroup,
+  Accordion, AccordionSummary, AccordionDetails,
+  Dialog, DialogTitle, DialogContent, DialogActions,
+  Button, IconButton, Divider
 } from '@mui/material';
 
 import {
   Search, AccessTime,
   LocationOnOutlined,
-  ExpandMore
+  ExpandMore,
+  Add as AddIcon,
+  MoreVert as MoreVertIcon,
+  CreateNewFolderOutlined,
+  DeleteOutline
 } from '@mui/icons-material';
+import {
+  fetchDomains, createDomain, deleteDomain,
+  assignProductToDomain, unassignProduct,
+  type Domain
+} from '../../features/domains/domainsSlice';
 import { useDispatch, useSelector } from 'react-redux';
 import { type AppDispatch } from '../../app/store';
 import { useAuth } from '../../auth/AuthProvider';
@@ -272,6 +284,65 @@ const DataProducts = () => {
     }
   }, [dispatch, dataProductsItems, status, user?.token]);
 
+  // ---- Domains (verticals) ----
+  const domains = useSelector((state: any) => state.domains.domains) as Domain[];
+  const id_token = user?.token || '';
+  const userEmail = (user as any)?.email || '';
+  const [groupByDomain, setGroupByDomain] = useState(true);
+  const [newDomainOpen, setNewDomainOpen] = useState(false);
+  const [newDomainName, setNewDomainName] = useState('');
+  const [newDomainDesc, setNewDomainDesc] = useState('');
+  const [moveAnchor, setMoveAnchor] = useState<null | HTMLElement>(null);
+  const [moveProduct, setMoveProduct] = useState<DataProduct | null>(null);
+
+  useEffect(() => {
+    if (id_token) dispatch(fetchDomains({ id_token, userEmail }));
+  }, [dispatch, id_token, userEmail]);
+
+  // Map productId -> domainId for quick lookup.
+  const productToDomain = useMemo(() => {
+    const map: Record<string, string> = {};
+    domains.forEach((d) => (d.productIds || []).forEach((pid) => { map[pid] = d.id; }));
+    return map;
+  }, [domains]);
+
+  // Build the grouped sections: one per domain (in order) + an "Unassigned" bucket.
+  const domainGroups = useMemo(() => {
+    const groups = domains.map((d) => ({
+      domain: d,
+      items: dataProductsList.filter((p) => (d.productIds || []).includes(p.name)),
+    }));
+    const unassigned = dataProductsList.filter((p) => !productToDomain[p.name]);
+    return { groups, unassigned };
+  }, [domains, dataProductsList, productToDomain]);
+
+  const handleCreateDomain = async () => {
+    if (!newDomainName.trim()) return;
+    await dispatch(createDomain({ name: newDomainName.trim(), description: newDomainDesc.trim(), id_token, userEmail }));
+    setNewDomainName('');
+    setNewDomainDesc('');
+    setNewDomainOpen(false);
+  };
+
+  const openMoveMenu = (e: React.MouseEvent<HTMLElement>, product: DataProduct) => {
+    e.stopPropagation();
+    setMoveProduct(product);
+    setMoveAnchor(e.currentTarget);
+  };
+  const closeMoveMenu = () => { setMoveAnchor(null); setMoveProduct(null); };
+
+  const handleAssign = async (domainId: string) => {
+    if (moveProduct) await dispatch(assignProductToDomain({ domainId, productId: moveProduct.name, id_token, userEmail }));
+    closeMoveMenu();
+  };
+  const handleUnassign = async () => {
+    if (moveProduct) await dispatch(unassignProduct({ productId: moveProduct.name, id_token, userEmail }));
+    closeMoveMenu();
+  };
+  const handleDeleteDomain = async (id: string) => {
+    await dispatch(deleteDomain({ id, id_token, userEmail }));
+  };
+
   //sorting handlers
   const handleSortMenuClick = useCallback((event: React.MouseEvent<HTMLElement>) => {
     setSortAnchorEl(event.currentTarget);
@@ -365,6 +436,24 @@ const DataProducts = () => {
       cancelTokenSource.cancel('Component unmounted or search term changed');
     };
   }, [debouncedSearchTerm, dataProductsItems, user?.token]);
+
+  // Render a single product card with a "move to domain" overflow button.
+  const renderCard = (dataProducts: DataProduct) => (
+    <Grid size={{ xs: 12, sm: 6, md: 4 }} key={dataProducts.name}>
+      <Box sx={{ position: 'relative' }}>
+        <Tooltip title="Move to domain">
+          <IconButton
+            size="small"
+            onClick={(e) => openMoveMenu(e, dataProducts)}
+            sx={{ position: 'absolute', top: 8, right: 8, zIndex: 2, backgroundColor: 'rgba(255,255,255,0.85)', '&:hover': { backgroundColor: '#fff' } }}
+          >
+            <MoreVertIcon fontSize="small" />
+          </IconButton>
+        </Tooltip>
+        <DataProductCard dataProduct={dataProducts} onClick={() => handleCardClick(dataProducts)} />
+      </Box>
+    </Grid>
+  );
 
 
 
@@ -538,6 +627,28 @@ const DataProducts = () => {
                         Last Modified
                       </MenuItem>
                     </Menu>
+                        {/* New domain + group-by-domain toggle */}
+                    <Button
+                        size="small"
+                        startIcon={<AddIcon />}
+                        onClick={() => setNewDomainOpen(true)}
+                        sx={{ textTransform: 'none', color: '#0B57D0', fontFamily: '"Google Sans Text", sans-serif', mr: 1 }}
+                    >
+                        New domain
+                    </Button>
+                    {domains.length > 0 && (
+                      <Tooltip title={groupByDomain ? 'Show as flat list' : 'Group by domain'}>
+                        <ToggleButton
+                          value="group"
+                          selected={groupByDomain}
+                          onChange={() => setGroupByDomain((v) => !v)}
+                          size="small"
+                          sx={{ textTransform: 'none', mr: 1, height: '1.5rem', borderRadius: '1rem', fontSize: '12px', px: 1 }}
+                        >
+                          <CreateNewFolderOutlined fontSize="small" sx={{ mr: 0.5 }} /> Domains
+                        </ToggleButton>
+                      </Tooltip>
+                    )}
                         {/* View Mode Toggle */}
                     <ToggleButtonGroup
                         value={viewMode}
@@ -697,17 +808,59 @@ const DataProducts = () => {
                     }
                     { !showLoading && !showEmptyState &&
                         ( viewMode === 'list' ?
-                        (dataProductsList.map((dataProducts: DataProduct) => (
-                            <Grid
-                                size={{ xs: 12, sm: 6, md: 4 }}
-                                key={dataProducts.name}
-                            >
-                                <DataProductCard
-                                    dataProduct={dataProducts}
-                                    onClick={() => handleCardClick(dataProducts)}
-                                />
+                          ((groupByDomain && domains.length > 0) ? (
+                            <Grid size={12}>
+                              {domainGroups.groups.map(({ domain, items }) => (
+                                <Accordion key={domain.id} defaultExpanded disableGutters
+                                  sx={{ boxShadow: 'none', '&:before': { display: 'none' }, mb: 1.5, border: '1px solid #E0E0E0', borderRadius: '12px', overflow: 'hidden' }}>
+                                  <AccordionSummary expandIcon={<ExpandMore />} sx={{ backgroundColor: '#F8FAFD' }}>
+                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flex: 1, minWidth: 0 }}>
+                                      <CreateNewFolderOutlined sx={{ color: '#0B57D0' }} />
+                                      <Typography sx={{ fontWeight: 600, color: '#1F1F1F' }}>{domain.name}</Typography>
+                                      <Typography variant="caption" sx={{ color: '#5f6368' }}>({items.length})</Typography>
+                                      {domain.description && (
+                                        <Typography variant="caption" sx={{ color: '#9aa0a6', ml: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                          {domain.description}
+                                        </Typography>
+                                      )}
+                                    </Box>
+                                    <Tooltip title="Delete domain">
+                                      <IconButton size="small" component="span"
+                                        onClick={(e) => { e.stopPropagation(); handleDeleteDomain(domain.id); }}
+                                        sx={{ mr: 1 }}>
+                                        <DeleteOutline fontSize="small" />
+                                      </IconButton>
+                                    </Tooltip>
+                                  </AccordionSummary>
+                                  <AccordionDetails>
+                                    {items.length === 0 ? (
+                                      <Typography variant="body2" sx={{ color: '#9aa0a6', px: 1, py: 1 }}>
+                                        No products yet — use the ⋮ menu on a product to move it into this domain.
+                                      </Typography>
+                                    ) : (
+                                      <Grid container spacing={2}>{items.map(renderCard)}</Grid>
+                                    )}
+                                  </AccordionDetails>
+                                </Accordion>
+                              ))}
+                              {domainGroups.unassigned.length > 0 && (
+                                <Accordion defaultExpanded disableGutters
+                                  sx={{ boxShadow: 'none', '&:before': { display: 'none' }, mb: 1.5, border: '1px solid #E0E0E0', borderRadius: '12px', overflow: 'hidden' }}>
+                                  <AccordionSummary expandIcon={<ExpandMore />} sx={{ backgroundColor: '#F8FAFD' }}>
+                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                      <Typography sx={{ fontWeight: 600, color: '#1F1F1F' }}>Unassigned</Typography>
+                                      <Typography variant="caption" sx={{ color: '#5f6368' }}>({domainGroups.unassigned.length})</Typography>
+                                    </Box>
+                                  </AccordionSummary>
+                                  <AccordionDetails>
+                                    <Grid container spacing={2}>{domainGroups.unassigned.map(renderCard)}</Grid>
+                                  </AccordionDetails>
+                                </Accordion>
+                              )}
                             </Grid>
-                        )))
+                          ) : (
+                            dataProductsList.map((dataProducts: DataProduct) => renderCard(dataProducts))
+                          ))
                         : (
                           <DataProductsTableView
                             dataProducts={dataProductsList}
@@ -735,6 +888,50 @@ const DataProducts = () => {
             </Box>
         </Box>
         </Paper>
+
+        {/* Create-domain dialog */}
+        <Dialog open={newDomainOpen} onClose={() => setNewDomainOpen(false)} fullWidth maxWidth="xs">
+          <DialogTitle>New domain</DialogTitle>
+          <DialogContent>
+            <Typography variant="body2" sx={{ color: '#5f6368', mb: 2 }}>
+              Domains are business verticals (e.g. HR, Bank, Sales) that group your data products. They live only in this app.
+            </Typography>
+            <TextField
+              autoFocus fullWidth size="small" label="Name" placeholder="e.g. HR"
+              value={newDomainName} onChange={(e) => setNewDomainName(e.target.value)}
+              sx={{ mb: 2 }}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleCreateDomain(); }}
+            />
+            <TextField
+              fullWidth size="small" label="Description (optional)" multiline minRows={2}
+              value={newDomainDesc} onChange={(e) => setNewDomainDesc(e.target.value)}
+            />
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setNewDomainOpen(false)} sx={{ textTransform: 'none' }}>Cancel</Button>
+            <Button onClick={handleCreateDomain} variant="contained" disabled={!newDomainName.trim()} sx={{ textTransform: 'none' }}>Create</Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Move-to-domain menu */}
+        <Menu anchorEl={moveAnchor} open={Boolean(moveAnchor)} onClose={closeMoveMenu}>
+          <MenuItem disabled sx={{ fontSize: '12px', color: '#9aa0a6' }}>Move to…</MenuItem>
+          {domains.map((d) => (
+            <MenuItem key={d.id} onClick={() => handleAssign(d.id)}
+              selected={moveProduct ? productToDomain[moveProduct.name] === d.id : false}>
+              {d.name}
+            </MenuItem>
+          ))}
+          {domains.length === 0 && (
+            <MenuItem onClick={() => { closeMoveMenu(); setNewDomainOpen(true); }}>Create a domain first…</MenuItem>
+          )}
+          {moveProduct && productToDomain[moveProduct.name] && (
+            <>
+              <Divider />
+              <MenuItem onClick={handleUnassign} sx={{ color: '#d93025' }}>Remove from domain</MenuItem>
+            </>
+          )}
+        </Menu>
     </Box>
   );
 };

@@ -28,7 +28,7 @@ import {
   DialogContent,
   DialogActions
 } from '@mui/material';
-import { ArrowBack, CheckCircle, Cancel, Refresh, Person, Assignment, AdminPanelSettings, Search, Add } from '@mui/icons-material';
+import { ArrowBack, CheckCircle, Cancel, Refresh, Person, Assignment, AdminPanelSettings, Search, Add, DeleteOutline } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../auth/AuthProvider';
 import axios from 'axios';
@@ -62,7 +62,7 @@ const AccessRequestsDashboard: React.FC = () => {
   const [requests, setRequests] = useState<AccessRequest[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
-  const [statusFilter, setStatusFilter] = useState<string>('awaiting');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
   const [projectFilter, setProjectFilter] = useState<string>('');
   const [tabValue, setTabValue] = useState<number>(0);
   const [searchTerm, setSearchTerm] = useState<string>('');
@@ -149,6 +149,37 @@ const AccessRequestsDashboard: React.FC = () => {
     } catch (err: any) {
       console.error('Error updating request:', err);
       setError(err.response?.data?.error || 'Failed to update request');
+    }
+  };
+
+  // Delete a single access request (does not change any granted IAM).
+  const handleDeleteRequest = async (requestId: string) => {
+    if (!window.confirm('Delete this access request? This only removes the request record, not any access already granted.')) return;
+    try {
+      await axios.delete(`${URLS.API_URL}${URLS.DELETE_ACCESS_REQUEST}/${encodeURIComponent(requestId)}`, {
+        headers: { Authorization: `Bearer ${user?.token}`, 'x-user-email': user?.email }
+      });
+      fetchAccessRequests();
+    } catch (err: any) {
+      console.error('Error deleting request:', err);
+      setError(err.response?.data?.error || 'Failed to delete request');
+    }
+  };
+
+  // Delete ALL requests for a requester email (demo cleanup).
+  const handleDeleteAllForEmail = async () => {
+    const email = window.prompt('Delete ALL access requests for which requester email? (demo cleanup)');
+    if (!email || !email.trim()) return;
+    try {
+      const res = await axios.post(`${URLS.API_URL}${URLS.DELETE_ACCESS_REQUESTS_BY_EMAIL}`, { email: email.trim() }, {
+        headers: { Authorization: `Bearer ${user?.token}`, 'x-user-email': user?.email }
+      });
+      setError(null);
+      alert(`Deleted ${res.data?.deleted ?? 0} request(s) for ${email.trim()}.`);
+      fetchAccessRequests();
+    } catch (err: any) {
+      console.error('Error deleting requests for email:', err);
+      setError(err.response?.data?.error || 'Failed to delete requests');
     }
   };
 
@@ -286,6 +317,20 @@ const AccessRequestsDashboard: React.FC = () => {
           >
             New Request
           </Button>
+          {userRole === 'admin' && (
+            <Tooltip title="Delete all requests for a requester (demo cleanup)">
+              <Button
+                variant="outlined"
+                size="small"
+                color="error"
+                onClick={handleDeleteAllForEmail}
+                sx={{ borderRadius: '20px', textTransform: 'none' }}
+                startIcon={<DeleteOutline />}
+              >
+                Clear account
+              </Button>
+            </Tooltip>
+          )}
           <IconButton onClick={fetchAccessRequests}>
             <Refresh />
           </IconButton>
@@ -483,6 +528,7 @@ const AccessRequestsDashboard: React.FC = () => {
                     </TableCell>
                     {(userRole === 'admin') && (
                       <TableCell align="right">
+                       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 1 }}>
                         {(request.status?.toLowerCase() === 'pending' || request.status?.toLowerCase() === 'partially_approved') ? (
                           <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
                             <Button
@@ -529,6 +575,12 @@ const AccessRequestsDashboard: React.FC = () => {
                             {request.status?.toLowerCase() === 'revoked' ? 'Access Revoked' : 'Rejected'}
                           </Typography>
                         )}
+                        <Tooltip title="Delete request">
+                          <IconButton size="small" onClick={() => handleDeleteRequest(request.id)} sx={{ color: '#5f6368' }}>
+                            <DeleteOutline fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                       </Box>
                       </TableCell>
                     )}
                   </TableRow>

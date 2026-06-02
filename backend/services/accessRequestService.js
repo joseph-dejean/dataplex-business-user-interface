@@ -168,9 +168,43 @@ const updateAccessRequestStatus = async (id, status, adminNote, reviewerEmail, a
     }
 };
 
+/**
+ * Delete a single access request by ID.
+ */
+const deleteAccessRequest = async (id) => {
+    try {
+        await getFirestore().collection(COLLECTION_NAME).doc(id).delete();
+        return true;
+    } catch (error) {
+        console.error(`Error deleting access request ${id}:`, error);
+        throw error;
+    }
+};
+
+/**
+ * Delete ALL access requests for a given requester email (demo cleanup).
+ * Returns the number of requests deleted.
+ */
+const deleteAccessRequestsByEmail = async (email) => {
+    try {
+        const db = getFirestore();
+        const snap = await db.collection(COLLECTION_NAME).where('requesterEmail', '==', email).get();
+        if (snap.empty) return 0;
+        const batch = db.batch();
+        snap.docs.forEach((d) => batch.delete(d.ref));
+        await batch.commit();
+        return snap.size;
+    } catch (error) {
+        console.error(`Error deleting access requests for ${email}:`, error);
+        throw error;
+    }
+};
+
 module.exports = {
     createAccessRequest,
     getAccessRequests,
     getAccessRequestById,
-    updateAccessRequestStatus
+    updateAccessRequestStatus,
+    deleteAccessRequest,
+    deleteAccessRequestsByEmail
 };

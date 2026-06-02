@@ -35,11 +35,14 @@ console.log('[STARTUP] Loading custom modules...');
 const authMiddleware = require('./middlewares/authMiddleware');
 const { querySampleFromBigQuery } = require('./utility');
 const { sendAccessRequestEmail, sendApprovalEmail, sendRejectionEmail, sendFeedbackEmail } = require('./services/emailService');
-const { createAccessRequest, getAccessRequests, updateAccessRequestStatus, getAccessRequestById } = require('./services/accessRequestService');
+const { createAccessRequest, getAccessRequests, updateAccessRequestStatus, getAccessRequestById, deleteAccessRequest, deleteAccessRequestsByEmail } = require('./services/accessRequestService');
 const { grantDatasetAccess, revokeDatasetAccess, grantTableAccess, grantIamAccess, revokeIamAccess, getIamBindings, verifyUserAccess, checkUserRoles } = require('./services/gcpIamService');
 
 // Roles that grant read access to BigQuery data for the UI access-gating checks.
 const ACCESS_ROLES = ['roles/owner', 'roles/editor', 'roles/viewer', 'roles/bigquery.dataViewer', 'roles/bigquery.admin'];
+
+// App-managed data-product domains (verticals). Stored in Firestore, not Dataplex.
+const domainService = require('./services/domainService');
 const adminService = require('./services/adminService');
 const grantedAccessService = require('./services/grantedAccessService');
 const notificationService = require('./services/notificationService');
@@ -4865,6 +4868,77 @@ app.post('/api/v1/discovery-search', async (req, res) => {
   }
 });
 
+/**
+ * Data-product DOMAINS (verticals like HR / Bank / Sales).
+ * App-managed groupings stored in Firestore; products are referenced by their
+ * Dataplex resource name. No Dataplex writes happen here.
+ */
+app.get('/api/v1/domains', async (req, res) => {
+  try {
+    const domains = await domainService.listDomains();
+    res.json({ domains });
+  } catch (error) {
+    console.error('[DOMAINS] list error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/v1/domains', async (req, res) => {
+  try {
+    const { name, description } = req.body;
+    const owner = req.headers['x-user-email'] || '';
+    const domain = await domainService.createDomain({ name, description, owner });
+    res.json({ domain });
+  } catch (error) {
+    console.error('[DOMAINS] create error:', error.message);
+    res.status(400).json({ error: error.message });
+  }
+});
+
+app.patch('/api/v1/domains/:id', async (req, res) => {
+  try {
+    const domain = await domainService.updateDomain(req.params.id, req.body || {});
+    res.json({ domain });
+  } catch (error) {
+    console.error('[DOMAINS] update error:', error.message);
+    res.status(400).json({ error: error.message });
+  }
+});
+
+app.delete('/api/v1/domains/:id', async (req, res) => {
+  try {
+    await domainService.deleteDomain(req.params.id);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('[DOMAINS] delete error:', error.message);
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// Assign a data product to a domain (moves it out of any other domain).
+app.post('/api/v1/domains/:id/assign', async (req, res) => {
+  try {
+    const { productId } = req.body;
+    const domain = await domainService.assignProduct(req.params.id, productId);
+    res.json({ domain });
+  } catch (error) {
+    console.error('[DOMAINS] assign error:', error.message);
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// Remove a data product from whatever domain it is in.
+app.post('/api/v1/domains/unassign', async (req, res) => {
+  try {
+    const { productId } = req.body;
+    await domainService.unassignProduct(productId);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('[DOMAINS] unassign error:', error.message);
+    res.status(400).json({ error: error.message });
+  }
+});
+
 app.post('/api/v1/access-request', async (req, res) => {
   try {
     const { assetName, linkedResource, message, requesterEmail, projectId, projectAdmin, assetType } = req.body;
@@ -5124,6 +5198,37 @@ app.get('/api/v1/access-requests', async (req, res) => {
       message: 'Failed to fetch access requests',
       details: error.message
     });
+  }
+});
+
+/**
+ * DELETE /api/v1/access-request/:id
+ * Delete a single access request (does not touch any granted IAM).
+ */
+app.delete('/api/v1/access-request/:id', async (req, res) => {
+  try {
+    await deleteAccessRequest(req.params.id);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('[ACCESS-REQUEST] delete error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * POST /api/v1/access-requests/delete-by-email
+ * Delete ALL access requests for a requester email (demo cleanup).
+ * Body: { email }
+ */
+app.post('/api/v1/access-requests/delete-by-email', async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ error: 'email is required' });
+    const deleted = await deleteAccessRequestsByEmail(email);
+    res.json({ success: true, deleted });
+  } catch (error) {
+    console.error('[ACCESS-REQUEST] delete-by-email error:', error.message);
+    res.status(500).json({ error: error.message });
   }
 });
 

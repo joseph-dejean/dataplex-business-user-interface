@@ -24,7 +24,10 @@ export const searchResourcesByTerm = createAsyncThunk('resources/searchResources
   // If the term is not empty, we will perform a search.
   try {
     let requestResourceData = {};
-    axios.defaults.headers.common['Authorization'] = requestData.id_token ? `Bearer ${requestData.id_token}` : '';
+    // Only SET the auth header when we actually have a token. Never blank it —
+    // assigning '' here would un-authenticate every later request globally,
+    // causing a 401 -> logout (this was the "agent search logs me out" bug).
+    if (requestData.id_token) axios.defaults.headers.common['Authorization'] = `Bearer ${requestData.id_token}`;
     if(requestData.requestResourceData) {
       requestResourceData = requestData.requestResourceData;
     }else{ 
@@ -158,7 +161,10 @@ export const searchResourcesByTerm = createAsyncThunk('resources/searchResources
 // existing result UI can render them.
 export const discoverySearch = createAsyncThunk('resources/discoverySearch', async (requestData: any, { rejectWithValue }) => {
   try {
-    axios.defaults.headers.common['Authorization'] = requestData.id_token ? `Bearer ${requestData.id_token}` : '';
+    // Only SET the auth header when we actually have a token. Never blank it —
+    // assigning '' here would un-authenticate every later request globally,
+    // causing a 401 -> logout (this was the "agent search logs me out" bug).
+    if (requestData.id_token) axios.defaults.headers.common['Authorization'] = `Bearer ${requestData.id_token}`;
     const query = (requestData.term ?? '').trim();
     if (!query) {
       return { data: [], requestData: {}, results: { totalSize: 0 } };
@@ -207,7 +213,10 @@ export const browseResourcesByAspects = createAsyncThunk('resources/browseResour
   // If the term is not empty, we will perform a search.
   try {
     // search from your API endpoint
-    axios.defaults.headers.common['Authorization'] = requestData.id_token ? `Bearer ${requestData.id_token}` : '';
+    // Only SET the auth header when we actually have a token. Never blank it —
+    // assigning '' here would un-authenticate every later request globally,
+    // causing a 401 -> logout (this was the "agent search logs me out" bug).
+    if (requestData.id_token) axios.defaults.headers.common['Authorization'] = `Bearer ${requestData.id_token}`;
     let searchString = '';
     if(requestData.annotationName && requestData.annotationName != '') {
       let aspectType = getAspectName(requestData.annotationName);
@@ -253,7 +262,10 @@ export const fetchEntriesByParent = createAsyncThunk('resources/fetchEntriesByPa
   // If the term is not empty, we will perform a search.
   try {
     // search from your API endpoint 
-    axios.defaults.headers.common['Authorization'] = requestData.id_token ? `Bearer ${requestData.id_token}` : '';
+    // Only SET the auth header when we actually have a token. Never blank it —
+    // assigning '' here would un-authenticate every later request globally,
+    // causing a 401 -> logout (this was the "agent search logs me out" bug).
+    if (requestData.id_token) axios.defaults.headers.common['Authorization'] = `Bearer ${requestData.id_token}`;
     let searchString = `parent=${requestData.parent}`;
 
     
