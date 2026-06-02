@@ -25,7 +25,7 @@ export const fetchDataScan = createAsyncThunk(
 
     try {
       // search from your API endpoint 
-      axios.defaults.headers.common['Authorization'] = requestData.id_token ? `Bearer ${requestData.id_token}` : '';
+      if (requestData.id_token) axios.defaults.headers.common['Authorization'] = `Bearer ${requestData.id_token}`;
       let name = requestData.name;
       
       const response = await axios.get(URLS.API_URL + URLS.GET_DATA_SCAN + `?name=${name}`);

@@ -13,7 +13,7 @@ export const fetchEntry = createAsyncThunk('entry/fetchEntry', async (requestDat
   // If the term is not empty, we will perform a search.
   try {
     // search from your API endpoint 
-    axios.defaults.headers.common['Authorization'] = requestData.id_token ? `Bearer ${requestData.id_token}` : '';
+    if (requestData.id_token) axios.defaults.headers.common['Authorization'] = `Bearer ${requestData.id_token}`;
     const entryName = requestData.entryName
     
     const response = await axios.get(URLS.API_URL + URLS.GET_ENTRY + `?entryName=${entryName}`);
@@ -44,7 +44,7 @@ export const fetchLineageEntry = createAsyncThunk('entry/fetchLineageEntry', asy
   // If the term is not empty, we will perform a search.
   try {
     // search from your API endpoint
-    axios.defaults.headers.common['Authorization'] = requestData.id_token ? `Bearer ${requestData.id_token}` : '';
+    if (requestData.id_token) axios.defaults.headers.common['Authorization'] = `Bearer ${requestData.id_token}`;
     const fqn = requestData.fqn
 
     const response = await axios.get(URLS.API_URL + URLS.GET_ENTRY_BY_FQN + `?fqn=${fqn}`);

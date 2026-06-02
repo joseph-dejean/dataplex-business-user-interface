@@ -6,7 +6,7 @@ import axios, { AxiosError } from 'axios';
 export const getProjects = createAsyncThunk('projects/getProjects', async (requestData: any , { rejectWithValue }) => {
   try {
     // search from your API endpoint 
-    axios.defaults.headers.common['Authorization'] = requestData.id_token ? `Bearer ${requestData.id_token}` : '';
+    if (requestData.id_token) axios.defaults.headers.common['Authorization'] = `Bearer ${requestData.id_token}`;
     
     const response = await axios.get(URLS.API_URL + URLS.GET_PROJECTS);
 

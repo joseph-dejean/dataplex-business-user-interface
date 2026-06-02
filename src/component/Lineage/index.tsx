@@ -367,7 +367,7 @@ const Lineage: React.FC<LineageProps> = ({entry}) => {
     setSelectedNode(nodeData.id);
     try {
       // search from your API endpoint 
-      axios.defaults.headers.common['Authorization'] = id_token ? `Bearer ${id_token}` : '';
+      if (id_token) axios.defaults.headers.common['Authorization'] = `Bearer ${id_token}`;
       let parent = nodeData.linkData.name.split('/').slice(0,4).join("/");
       let fqn = nodeData.fqn;
       
@@ -441,7 +441,7 @@ const Lineage: React.FC<LineageProps> = ({entry}) => {
     setSelectedNode(nodeData.id);
     try {
       // search from your API endpoint 
-      axios.defaults.headers.common['Authorization'] = id_token ? `Bearer ${id_token}` : '';
+      if (id_token) axios.defaults.headers.common['Authorization'] = `Bearer ${id_token}`;
       let parent = nodeData.linkData.name.split('/').slice(0,4).join("/");
       let fqn = nodeData.fqn;
       
@@ -707,7 +707,7 @@ const Lineage: React.FC<LineageProps> = ({entry}) => {
     //let gData = graphData;
     try {
       // search from your API endpoint 
-      axios.defaults.headers.common['Authorization'] = id_token ? `Bearer ${id_token}` : '';
+      if (id_token) axios.defaults.headers.common['Authorization'] = `Bearer ${id_token}`;
       let parent = entry.name.split('/').slice(0,4).join("/");
       let fqn = entry.fullyQualifiedName;
       

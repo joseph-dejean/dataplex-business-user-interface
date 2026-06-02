@@ -20,7 +20,7 @@ export const fetchDataProductsList = createAsyncThunk('dataProducts/fetchDataPro
 
   try {
     // fetching data products from API endpoint 
-    axios.defaults.headers.common['Authorization'] = requestData.id_token ? `Bearer ${requestData.id_token}` : '';
+    if (requestData.id_token) axios.defaults.headers.common['Authorization'] = `Bearer ${requestData.id_token}`;
     const response = await axios.get(
         `https://dataplex.googleapis.com/v1/projects/${import.meta.env.VITE_GOOGLE_PROJECT_ID}/locations/-/dataProducts`
     );
@@ -49,7 +49,7 @@ export const getDataProductDetails = createAsyncThunk('dataProducts/getDataProdu
 
   try {
     // fetching data products from API endpoint 
-    axios.defaults.headers.common['Authorization'] = requestData.id_token ? `Bearer ${requestData.id_token}` : '';
+    if (requestData.id_token) axios.defaults.headers.common['Authorization'] = `Bearer ${requestData.id_token}`;
     
     const project = requestData.dataProductId.split('/')[1];
     const location = requestData.dataProductId.split('/')[3];
@@ -94,7 +94,7 @@ export const fetchDataProductsAssetsList = createAsyncThunk('dataProducts/fetchD
 
   try {
     // fetching data products from API endpoint 
-    axios.defaults.headers.common['Authorization'] = requestData.id_token ? `Bearer ${requestData.id_token}` : '';
+    if (requestData.id_token) axios.defaults.headers.common['Authorization'] = `Bearer ${requestData.id_token}`;
     const project = requestData.dataProductId.split('/')[1];
     const location = requestData.dataProductId.split('/')[3];
     const finalEntryName = `projects/${project}/locations/${location}/dataProducts/${requestData.dataProductId.split('/').pop()}`;

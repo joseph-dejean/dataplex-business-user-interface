@@ -77,12 +77,23 @@ const SearchPage: React.FC = () => {
     setFilters(selectedFilters);
   }, []);
 
+  // Run the agent (discovery) search, but if it fails (e.g. the agent service
+  // isn't deployed / 503), fall back to the normal search so the user still
+  // gets results instead of an empty page.
+  const runAgentSearch = () => {
+    dispatch(discoverySearch({ term: searchTerm, id_token: id_token, userEmail: userEmail }))
+      .unwrap()
+      .catch(() => {
+        dispatch(searchResourcesByTerm({ term: searchTerm, id_token: id_token, userEmail: userEmail, filters: filters, semanticSearch: semanticSearch }));
+      });
+  };
+
   // Toggle the ADK discovery agent search mode and re-run the current query.
   const handleAgentToggle = (checked: boolean) => {
     dispatch(setAgentSearch({ agentSearch: checked }));
     if (searchTerm && searchTerm.trim() !== '') {
       if (checked) {
-        dispatch(discoverySearch({ term: searchTerm, id_token: id_token, userEmail: userEmail }));
+        runAgentSearch();
       } else {
         dispatch(searchResourcesByTerm({ term: searchTerm, id_token: id_token, userEmail: userEmail, filters: filters, semanticSearch: semanticSearch }));
       }
@@ -134,8 +145,8 @@ const SearchPage: React.FC = () => {
     const hasTerm = !!(searchTerm && searchTerm.trim() !== '');
     const hasFilters = Array.isArray(filters) && filters.length > 0;
     if (agentSearch && hasTerm) {
-      // Agentic discovery search (ADK agent) — free-text only.
-      dispatch(discoverySearch({ term: searchTerm, id_token: id_token, userEmail: userEmail }));
+      // Agentic discovery search (ADK agent) — free-text only, with fallback.
+      runAgentSearch();
     } else if (hasTerm || hasFilters) {
       dispatch(searchResourcesByTerm({term : searchTerm, id_token: id_token, userEmail: userEmail, filters: filters, semanticSearch: semanticSearch}) );
     }

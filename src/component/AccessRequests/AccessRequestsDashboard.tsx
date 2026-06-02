@@ -26,7 +26,8 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
-  DialogActions
+  DialogActions,
+  Autocomplete
 } from '@mui/material';
 import { ArrowBack, CheckCircle, Cancel, Refresh, Person, Assignment, AdminPanelSettings, Search, Add, DeleteOutline } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
@@ -69,6 +70,10 @@ const AccessRequestsDashboard: React.FC = () => {
   const [isNewRequestOpen, setIsNewRequestOpen] = useState<boolean>(false);
   const [newRequestAssetName, setNewRequestAssetName] = useState<string>('');
   const [newRequestDialogOpen, setNewRequestDialogOpen] = useState<boolean>(false);
+  // Searchable asset picker for the New Request dialog.
+  const [assetInput, setAssetInput] = useState<string>('');
+  const [assetOptions, setAssetOptions] = useState<{ label: string; value: string; sub: string }[]>([]);
+  const [assetSearching, setAssetSearching] = useState<boolean>(false);
 
   // Determine user role (admin, manager, or user)
   const userRole = user?.isAdmin || user?.role === 'admin' || user?.role === 'manager' ? 'admin' : 'user';
@@ -76,6 +81,40 @@ const AccessRequestsDashboard: React.FC = () => {
   useEffect(() => {
     fetchAccessRequests();
   }, [user?.email, userRole, statusFilter, projectFilter]);
+
+  // Debounced asset search for the New Request picker: type "banque" and pick a
+  // table/dataset from the dropdown instead of typing the full name by hand.
+  useEffect(() => {
+    if (!newRequestDialogOpen) return;
+    const term = assetInput.trim();
+    if (term.length < 2) { setAssetOptions([]); return; }
+    let cancelled = false;
+    setAssetSearching(true);
+    const t = setTimeout(async () => {
+      try {
+        const res = await axios.post(`${URLS.API_URL}${URLS.SEARCH}`, {
+          query: term, pageSize: 20, orderBy: 'relevance', semanticSearch: true,
+        }, { headers: { Authorization: `Bearer ${user?.token}`, 'x-user-email': user?.email } });
+        if (cancelled) return;
+        const results = res.data?.results || [];
+        const opts = results.map((r: any) => {
+          const e = r.dataplexEntry || r;
+          const fqn = (e.fullyQualifiedName || '').replace(/^bigquery:/, '');
+          const display = e.entrySource?.displayName || fqn.split('.').pop() || fqn;
+          const type = (e.entryType || '').split('/').pop() || '';
+          return { label: display, value: fqn || display, sub: `${type ? type + ' · ' : ''}${fqn}` };
+        }).filter((o: any) => o.value);
+        // De-duplicate by value.
+        const seen = new Set<string>();
+        setAssetOptions(opts.filter((o: any) => (seen.has(o.value) ? false : (seen.add(o.value), true))));
+      } catch {
+        if (!cancelled) setAssetOptions([]);
+      } finally {
+        if (!cancelled) setAssetSearching(false);
+      }
+    }, 400);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [assetInput, newRequestDialogOpen, user?.email, user?.token]);
 
   // Statuses that represent "awaiting action" (needs approval or rejection)
   const AWAITING_STATUSES = ['PENDING', 'PARTIALLY_APPROVED'];
@@ -622,16 +661,46 @@ const AccessRequestsDashboard: React.FC = () => {
         <DialogTitle>Request Access to a Dataset or Table</DialogTitle>
         <DialogContent>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Enter the name of the dataset or table you need access to (e.g. <em>dataplex-ui.bank.customer</em>).
+            Search for the table or dataset you need (e.g. type <em>banque</em>), then pick it from the list. You can also type the full name manually.
           </Typography>
-          <TextField
-            autoFocus
-            fullWidth
-            label="Asset name"
-            placeholder="project.dataset.table"
-            value={newRequestAssetName}
-            onChange={(e) => setNewRequestAssetName(e.target.value)}
-            size="small"
+          <Autocomplete
+            freeSolo
+            autoHighlight
+            options={assetOptions}
+            loading={assetSearching}
+            filterOptions={(x) => x}
+            getOptionLabel={(o) => (typeof o === 'string' ? o : o.value)}
+            renderOption={(props, o) => (
+              <li {...props} key={o.value}>
+                <Box>
+                  <Typography variant="body2" sx={{ fontWeight: 500 }}>{o.label}</Typography>
+                  <Typography variant="caption" color="text.secondary">{o.sub}</Typography>
+                </Box>
+              </li>
+            )}
+            onInputChange={(_e, v) => { setAssetInput(v); setNewRequestAssetName(v); }}
+            onChange={(_e, v) => {
+              const val = typeof v === 'string' ? v : (v?.value || '');
+              setNewRequestAssetName(val);
+            }}
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                autoFocus
+                label="Search for a table or dataset"
+                placeholder="e.g. banque"
+                size="small"
+                InputProps={{
+                  ...params.InputProps,
+                  endAdornment: (
+                    <>
+                      {assetSearching ? <CircularProgress color="inherit" size={16} /> : null}
+                      {params.InputProps.endAdornment}
+                    </>
+                  ),
+                }}
+              />
+            )}
           />
         </DialogContent>
         <DialogActions>

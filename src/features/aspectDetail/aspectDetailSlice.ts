@@ -6,7 +6,7 @@ import axios, { AxiosError } from 'axios';
 export const getAspectDetail = createAsyncThunk('aspectDetail/getAspectDetail', async (requestData: any , { rejectWithValue }) => {
   try {
     // search from your API endpoint 
-    axios.defaults.headers.common['Authorization'] = requestData.id_token ? `Bearer ${requestData.id_token}` : '';
+    if (requestData.id_token) axios.defaults.headers.common['Authorization'] = `Bearer ${requestData.id_token}`;
     
     const response = await axios.post(URLS.API_URL + URLS.GET_ASPECT_DETAIL, {
       name:requestData.resource

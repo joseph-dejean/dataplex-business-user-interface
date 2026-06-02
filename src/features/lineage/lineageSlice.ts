@@ -13,7 +13,7 @@ export const fetchLineageSearchLinks = createAsyncThunk('lineage/fetchLineageSea
   // If the term is not empty, we will perform a search.
   try {
     // search from your API endpoint 
-    axios.defaults.headers.common['Authorization'] = requestData.id_token ? `Bearer ${requestData.id_token}` : '';
+    if (requestData.id_token) axios.defaults.headers.common['Authorization'] = `Bearer ${requestData.id_token}`;
     let parent = requestData.parent;
     let fqn = requestData.fqn;
     

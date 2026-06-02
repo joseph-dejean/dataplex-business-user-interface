@@ -67,7 +67,12 @@ export const loadStateFromStorage = (): PersistedState => {
     const persistedState: PersistedState = {};
 
     if (searchState) {
-      persistedState.search = JSON.parse(searchState);
+      const parsedSearch = JSON.parse(searchState);
+      // Agent (discovery) search is opt-in PER SESSION. Never restore it as on,
+      // otherwise toggling it once leaves every later search stuck on the slow
+      // agent path even though the user didn't enable it this time.
+      parsedSearch.agentSearch = false;
+      persistedState.search = parsedSearch;
     }
 
     if (resourcesState) {
