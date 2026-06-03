@@ -8,6 +8,7 @@ import BigQueryProductIcon from '../../assets/svg/BigQuery.svg';
 import './SearchEntriesCard.css';
 import { type SxProps, type Theme } from '@mui/material/styles';
 import { fetchEntry, checkEntryAccess, clearHistory } from '../../features/entry/entrySlice';
+import { getDataProductDetails, setDataProductsDetailTabValue } from '../../features/dataProducts/dataProductsSlice';
 import type { AppDispatch } from '../../app/store';
 import { generateBigQueryLink, generateLookerStudioLink, getEntryType } from '../../utils/resourceUtils';
 import { debounce } from '../../utils/debounce';
@@ -196,6 +197,27 @@ const SearchEntriesCard: React.FC<SearchEntriesCardProps> = ({ entry, sx, isSele
 
   const dispatch = useDispatch<AppDispatch>();
   const navigate = useNavigate();
+
+  // Open the right detail page for this entry. Data products have their own rich
+  // page (Assets, Access groups, Contract, Insights…); the generic /view-details
+  // page only shows Overview + Aspects for them. So route data products to
+  // /data-products-details instead.
+  const openEntryDetails = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const resource = (entry as any)?.entrySource?.resource || entry?.name || (entry as any)?.fullyQualifiedName || '';
+    const dpMatch = String(resource).match(/projects\/[^/]+\/locations\/[^/]+\/dataProducts\/[^/?#]+/);
+    const isDataProduct = /product/i.test(String((entry as any)?.entryType || '')) || !!dpMatch;
+    if (isDataProduct && dpMatch) {
+      const dataProductId = dpMatch[0];
+      dispatch(setDataProductsDetailTabValue(0));
+      dispatch(getDataProductDetails({ dataProductId, id_token }));
+      navigate(`/data-products-details?dataProductId=${encodeURIComponent(dataProductId)}`);
+      return;
+    }
+    dispatch(clearHistory());
+    dispatch(fetchEntry({ entryName: entry.name, id_token }));
+    navigate('/view-details');
+  };
   const mode = useSelector((state: any) => state.user.mode) as string;
   const userEmail = useSelector((state: any) => state.user.userData?.email) as string | undefined;
   const accessCheckCache = useSelector((state: any) => state.entry.accessCheckCache) ?? {};
@@ -751,7 +773,7 @@ const SearchEntriesCard: React.FC<SearchEntriesCardProps> = ({ entry, sx, isSele
                     (schema, description, aspects, lineage) must not require data
                     access; only the actual rows/external tools are gated. */}
                 <Box
-                  onClick={(e: React.MouseEvent) => { e.stopPropagation(); dispatch(clearHistory()); dispatch(fetchEntry({ entryName: entry.name, id_token })); navigate('/view-details'); }}
+                  onClick={openEntryDetails}
                   sx={{
                     height: '32px',
                     padding: '6px 12px',

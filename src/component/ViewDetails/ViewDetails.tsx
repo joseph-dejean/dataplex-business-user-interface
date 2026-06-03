@@ -422,6 +422,22 @@ useEffect(() => {
     }
   }, [entryStatus, entryError, triggerNoAccess]);
 
+  // Data products have a dedicated detail page (Assets, Access groups, Contract,
+  // Insights). The generic page only shows Overview + Aspects for them, so if a
+  // data product lands here (double-click, lineage, notification link, back
+  // button), redirect to the full data-product page. DataProductsDetailView
+  // fetches its own data from the dataProductId URL param.
+  useEffect(() => {
+    if (entryStatus !== 'succeeded' || !entry?.name) return;
+    const resource = (entry as any)?.entrySource?.resource || entry.name || (entry as any)?.fullyQualifiedName || '';
+    const dpMatch = String(resource).match(/projects\/[^/]+\/locations\/[^/]+\/dataProducts\/[^/?#]+/);
+    const isDataProduct = /product/i.test(String((entry as any)?.entryType || '')) || !!dpMatch;
+    if (isDataProduct && dpMatch) {
+      navigate(`/data-products-details?dataProductId=${encodeURIComponent(dpMatch[0])}`, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entryStatus, entry?.name]);
+
   // Route-level access guard: when ViewDetails is reached directly (URL nav,
   // back button, notification link), the card-click guards do not apply.
   // Dispatch an explicit access check and block the page if access is denied.
