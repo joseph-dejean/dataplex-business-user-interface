@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { Box, IconButton, Skeleton, Tab, Tabs, Tooltip } from '@mui/material'
-import { ArrowBack, KeyboardArrowUp, KeyboardArrowDown, LockOutlined } from '@mui/icons-material'
+import { ArrowBack, KeyboardArrowUp, KeyboardArrowDown, LockOutlined, OpenInNew } from '@mui/icons-material'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import CustomTabPanel from '../TabPanel/CustomTabPanel'
@@ -8,7 +8,7 @@ import PreviewAnnotation from '../Annotation/PreviewAnnotation'
 import AnnotationFilter from '../Annotation/AnnotationFilter'
 import type { AppDispatch } from '../../app/store'
 import { useAuth } from '../../auth/AuthProvider'
-import { getEntryType, getMimeType, getName, hasValidAnnotationData  } from '../../utils/resourceUtils'
+import { getEntryType, getMimeType, getName, hasValidAnnotationData, generateDataProductConsoleLink  } from '../../utils/resourceUtils'
 import { fetchDataProductsAssetsList, fetchDataProductsList, getDataProductDetails, setDataProductsDetailTabValue } from '../../features/dataProducts/dataProductsSlice'
 import Assets from './Assets'
 import AccessGroup from './AccessGroup'
@@ -452,8 +452,8 @@ const tabProps = (index: number)  => {
                 )}
               </div>
 
-              {/* Request Access Button - below description, left-aligned */}
-              <div style={{ padding: "12px 20px 0px" }}>
+              {/* Action buttons - below description, left-aligned */}
+              <div style={{ padding: "12px 20px 0px", display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
                   <Box
                       component="button"
                       data-testid="cta-button"
@@ -483,6 +483,40 @@ const tabProps = (index: number)  => {
                       <LockOutlined style={{ fontSize: "18px" }} />
                       Request Access
                   </Box>
+                  {(() => {
+                    const consoleLink = generateDataProductConsoleLink(selectedDataProductDetails);
+                    if (!consoleLink) return null;
+                    return (
+                      <Box
+                        component="button"
+                        onClick={() => { window.open(consoleLink, '_blank', 'noopener,noreferrer'); }}
+                        sx={{
+                          fontFamily: '"Google Sans", sans-serif',
+                          backgroundColor: '#FFFFFF',
+                          color: '#0B57D0',
+                          borderRadius: '100px',
+                          padding: '10px 16px',
+                          fontSize: '14px',
+                          fontWeight: '500',
+                          border: '1px solid #C5C7C5',
+                          height: '40px',
+                          whiteSpace: 'nowrap',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          textTransform: 'none',
+                          gap: '8px',
+                          width: 'fit-content',
+                          cursor: 'pointer',
+                          transition: 'background-color 0.2s ease',
+                          '&:hover': { backgroundColor: 'rgba(0, 0, 0, 0.04)' },
+                        }}
+                      >
+                        <OpenInNew style={{ fontSize: "18px" }} />
+                        Open in console
+                      </Box>
+                    );
+                  })()}
               </div>
 
               {/* Navigation Tab Bar */}

@@ -272,8 +272,17 @@ const PreviewAnnotation: React.FC<PreviewAnnotationProps> = ({
              (item.kind === 'structValue' && item.structValue?.fields &&
               Object.keys(item.structValue.fields).length > 0);
     }
-    // Simple type (Standard JSON key-value)
-    return item !== null && item !== undefined && typeof item !== 'object';
+    // Standard-JSON aspect values (e.g. data-product aspects) are stored WITHOUT
+    // a protobuf `kind`: either a primitive, or a plain object/array. Treat any
+    // non-empty value as displayable so the aspect renders as an expandable
+    // accordion (FieldItem knows how to show these) instead of a dead,
+    // non-clickable row.
+    if (item && typeof item === 'object') {
+      if ('stringValue' in item || 'numberValue' in item || 'boolValue' in item) return true;
+      if (Array.isArray(item)) return item.length > 0;
+      return Object.keys(item).length > 0;
+    }
+    return item !== null && item !== undefined;
   };
 
   /**

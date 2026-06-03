@@ -186,6 +186,27 @@ export const generateBigQueryLink = (entry:any) => {
   return `https://console.cloud.google.com/bigquery?page=${pageType}&p=${project}&d=${dataset}${table}&project=${project}`;
 }
 
+/**
+ * Builds a Google Cloud console deep-link to a Dataplex data product.
+ * Data-product resources look like:
+ *   projects/{project}/locations/{location}/dataProducts/{id}
+ * (optionally prefixed with //dataplex.googleapis.com/). We pull those parts
+ * from entrySource.resource first, then fall back to the entry name/FQN.
+ * Returns '' when no data-product resource can be derived (caller hides the link).
+ */
+export const generateDataProductConsoleLink = (entry: any): string => {
+  const candidates = [entry?.entrySource?.resource, entry?.name, entry?.fullyQualifiedName];
+  for (const candidate of candidates) {
+    if (!candidate || typeof candidate !== 'string') continue;
+    const match = candidate.match(/projects\/([^/]+)\/locations\/([^/]+)\/dataProducts\/([^/?#]+)/);
+    if (match) {
+      const [, project, location, id] = match;
+      return `https://console.cloud.google.com/dataplex/projects/${project}/locations/${location}/dataProducts/${id}?project=${project}`;
+    }
+  }
+  return '';
+};
+
 export const generateLookerStudioLink = (entry: any) => {
   if (!entry?.fullyQualifiedName) return '';
   const fqnParts = entry.fullyQualifiedName.split(':').pop().split('.');
