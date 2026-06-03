@@ -2,12 +2,15 @@ import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import axios, { AxiosError } from 'axios';
 
 const getProjectNumber = (projectId: string) => {
+  // The id may already BE the project number (e.g. when the data product was
+  // opened from a search-result entry, whose name uses the numeric project).
+  if (/^\d+$/.test(String(projectId))) return String(projectId);
   let session = localStorage.getItem('sessionUserData');
   let appConfig = session ? JSON.parse(session)?.appConfig : null;
-  
-  let projects:any[] = appConfig.projects;
-  let projectName:string = projects.find((p) => p.projectId === projectId)?.name || '';
-  return projectName.split('/').length > 0 ? projectName.split('/')[1] : '';
+
+  let projects: any[] = appConfig?.projects || [];
+  let projectName: string = projects.find((p) => p.projectId === projectId)?.name || '';
+  return projectName.split('/').length > 1 ? projectName.split('/')[1] : '';
 }
 
 // createAsyncThunk is used for asynchronous actions.
