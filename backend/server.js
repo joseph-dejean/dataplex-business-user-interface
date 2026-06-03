@@ -3800,30 +3800,41 @@ app.post('/api/v1/search', async (req, res) => {
         .split(/[^a-z0-9àâäéèêëïîôöùûüç]+/i)
         .filter(t => t.length >= 3 && !STOPWORDS.has(t));
       if (terms.length > 0) {
-        const orQuery = terms.join(' OR ');
-        console.log(`[SEARCH][TOKENIZE] Retrying with OR of content terms: ${orQuery}`);
-        const tkPromises = allProjects.map(async (projId) => {
-          try {
-            const [tk] = await client.searchEntries({
-              name: `projects/${projId}/locations/${location}`,
-              query: orQuery,
-              pageSize: pageSize || 20,
-              semanticSearch: false
-            });
-            return tk || [];
-          } catch (err) {
-            console.warn(`[SEARCH][TOKENIZE] failed for ${projId}:`, err.message);
-            return [];
-          }
-        });
+        // Search EACH term on its own and merge. Dataplex's OR operator is
+        // unreliable, but a single-term keyword search matches (e.g. just
+        // "emprunteur" works), so per-term + merge makes "Je cherche le profil
+        // des emprunteur" return the same entries as the bare keywords.
+        console.log(`[SEARCH][TOKENIZE] Per-term search for: ${terms.join(', ')}`);
+        const perTerm = await Promise.all(
+          terms.flatMap(term =>
+            allProjects.map(async (projId) => {
+              try {
+                const [r] = await client.searchEntries({
+                  name: `projects/${projId}/locations/${location}`,
+                  query: term,
+                  pageSize: pageSize || 20,
+                  semanticSearch: false
+                });
+                return r || [];
+              } catch (err) {
+                console.warn(`[SEARCH][TOKENIZE] term "${term}" failed for ${projId}:`, err.message);
+                return [];
+              }
+            })
+          )
+        );
         const tkSeen = new Set();
-        searchResults = (await Promise.all(tkPromises)).flat().filter(entry => {
+        searchResults = perTerm.flat().filter(entry => {
           const name = entry?.dataplexEntry?.name || entry?.name;
           if (!name || tkSeen.has(name)) return false;
           tkSeen.add(name);
           return true;
         });
-        console.log(`[SEARCH][TOKENIZE] Found ${searchResults.length} results`);
+        // Surface data products first — a natural-language query usually wants
+        // the product, not every underlying table.
+        const isProduct = (e) => (((e.dataplexEntry || e).entryType) || '').toLowerCase().includes('product');
+        searchResults.sort((a, b) => (isProduct(a) ? 0 : 1) - (isProduct(b) ? 0 : 1));
+        console.log(`[SEARCH][TOKENIZE] Per-term merge found ${searchResults.length} results`);
       }
     }
 
