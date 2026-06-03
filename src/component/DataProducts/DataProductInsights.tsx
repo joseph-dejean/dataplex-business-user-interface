@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Box, Typography, IconButton, Collapse, Tooltip, Chip } from '@mui/material';
-import { ExpandMore, ExpandLess, ContentCopy, AutoAwesome } from '@mui/icons-material';
+import { ExpandMore, ExpandLess, ContentCopy, AutoAwesome, OpenInNew } from '@mui/icons-material';
 import { Highlight, themes } from 'prism-react-renderer';
 
 /**
@@ -127,6 +127,16 @@ const DataProductInsights: React.FC<DataProductInsightsProps> = ({ entry }) => {
     }
   };
 
+  // BigQuery Studio deep-link: the SQL (with the description as a leading
+  // comment) is URL-encoded into the `create-new-query-tab` matrix parameter,
+  // which opens a new query tab pre-filled with the query — same behaviour as
+  // the Dataplex console's "Open in BigQuery".
+  const openInBigQuery = (item: RecommendedQuery) => {
+    const text = `-- ${item.description}\n${item.query}`;
+    const url = `https://console.cloud.google.com/bigquery;create-new-query-tab=${encodeURIComponent(text)}`;
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
   return (
     <Box sx={{ padding: '8px 0 24px' }}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: '8px', mb: 0.5 }}>
@@ -187,6 +197,30 @@ const DataProductInsights: React.FC<DataProductInsightsProps> = ({ entry }) => {
                 </Box>
               </Box>
               <Collapse in={expanded === index}>
+                <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', px: 2.5, py: 1, borderTop: '1px solid #E9EEF6' }}>
+                  <Box
+                    component="button"
+                    onClick={(e) => { e.stopPropagation(); openInBigQuery(item); }}
+                    sx={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      background: 'transparent',
+                      border: 'none',
+                      cursor: 'pointer',
+                      color: '#0B57D0',
+                      fontFamily: '"Google Sans", sans-serif',
+                      fontSize: '13px',
+                      fontWeight: 500,
+                      padding: '4px 8px',
+                      borderRadius: '4px',
+                      '&:hover': { backgroundColor: 'rgba(11,87,208,0.08)' },
+                    }}
+                  >
+                    <OpenInNew sx={{ fontSize: '16px' }} />
+                    Open in BigQuery
+                  </Box>
+                </Box>
                 <Highlight theme={themes.nightOwlLight} code={item.query || ''} language="sql">
                   {({ className, style, tokens, getLineProps, getTokenProps }) => (
                     <Box
@@ -202,7 +236,6 @@ const DataProductInsights: React.FC<DataProductInsightsProps> = ({ entry }) => {
                         whiteSpace: 'pre-wrap',
                         wordBreak: 'break-word',
                         overflowX: 'auto',
-                        borderTop: '1px solid #E9EEF6',
                       }}
                     >
                       {tokens.map((line, i) => (
