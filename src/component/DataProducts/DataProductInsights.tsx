@@ -230,7 +230,7 @@ const DataProductInsights: React.FC<DataProductInsightsProps> = ({ entry }) => {
                     }}
                   >
                     <OpenInNew sx={{ fontSize: '16px' }} />
-                    Open in BigQuery
+                    Copy &amp; open in BigQuery
                   </Box>
                 </Box>
                 <Highlight theme={themes.nightOwlLight} code={item.query || ''} language="sql">
