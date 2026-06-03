@@ -6,7 +6,9 @@ import {
   Typography,
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import { getAspectL1Icon } from '../../constants/aspectIcons';
+import { generateDataProductConsoleLink } from '../../utils/resourceUtils';
 import FieldItem from './FieldItem';
 
 /**
@@ -138,6 +140,10 @@ const PreviewAnnotation: React.FC<PreviewAnnotationProps> = ({
   ];
 
   const aspects = { ...entry?.aspects };
+
+  // Console deep-link for the data product (empty for non-data-product entries).
+  // Rendered as a link INSIDE the data-product aspect dropdown.
+  const dataProductConsoleLink = generateDataProductConsoleLink(entry);
 
   // Remove global aspects that should be excluded
   globalAspectsToExclude.forEach(key => {
@@ -498,6 +504,28 @@ const PreviewAnnotation: React.FC<PreviewAnnotationProps> = ({
                   }),
                 }}>
                   {renderAnnotation(hasFields ? rawData.fields : rawData, key)}
+                  {rawAspectName === 'data-product' && dataProductConsoleLink && (
+                    <div style={{ padding: '8px 12px 12px 24px' }}>
+                      <a
+                        href={dataProductConsoleLink}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          color: '#0B57D0',
+                          fontFamily: 'Google Sans, sans-serif',
+                          fontSize: '13px',
+                          fontWeight: 500,
+                          textDecoration: 'none',
+                        }}
+                      >
+                        <OpenInNewIcon sx={{ fontSize: '16px' }} />
+                        Open in console
+                      </a>
+                    </div>
+                  )}
                 </AccordionDetails>
               </Accordion>
             );
