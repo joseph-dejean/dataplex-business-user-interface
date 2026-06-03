@@ -26,7 +26,9 @@ const DataProductAssets: React.FC<DataProductAssetsProps> = ({
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [activeFilters, setActiveFilters] = useState<any[]>([]);
   const [filterBarActiveFilters, setFilterBarActiveFilters] = useState<FilterBarActiveFilter[]>([]);
-  const [assetViewMode, setAssetViewMode] = useState<"list" | "table">("table");
+  // Clickable search-card list (the crash that previously forced "table" — an
+  // unguarded updateTime read in SearchEntriesCard — is now fixed).
+  const [assetViewMode, setAssetViewMode] = useState<"list" | "table">("list");
   const [assetPageSize, setAssetPageSize] = useState(20);
   const [assetPreviewData, setAssetPreviewData] = useState<any | null>(null);
 

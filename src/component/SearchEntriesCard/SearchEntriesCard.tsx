@@ -323,8 +323,17 @@ const SearchEntriesCard: React.FC<SearchEntriesCardProps> = ({ entry, sx, isSele
           ? rawType.toLowerCase()  // backend-normalized 'Table' → 'table' (capitalizeFirstLetter applied in render)
           : (entry.name?.split('/').at(-2) || '')  // fallback from entry name path
     );
-    const myDate = (typeof entry.updateTime !== 'string') ? new Date(entry.updateTime.seconds * 1000) : new Date(entry.updateTime);
-    const formattedDate = new Intl.DateTimeFormat('en-US', { month: "short" , day: "numeric", year: "numeric" }).format(myDate);
+    // Some entries (e.g. data-product assets) have no updateTime — guard against
+    // it (reading `.seconds` on undefined was crashing the whole page).
+    let formattedDate = '';
+    if (entry.updateTime) {
+      const myDate = (typeof entry.updateTime !== 'string')
+        ? new Date(((entry.updateTime.seconds ?? 0) as number) * 1000)
+        : new Date(entry.updateTime);
+      if (!isNaN(myDate.getTime())) {
+        formattedDate = new Intl.DateTimeFormat('en-US', { month: "short" , day: "numeric", year: "numeric" }).format(myDate);
+      }
+    }
     setModifiedDate(formattedDate);
     setDescription(entry.entrySource.description ?? '');
 
