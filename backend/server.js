@@ -5635,22 +5635,48 @@ app.post('/api/v1/access-request/update', async (req, res) => {
 
     // ONLY grant IAM access if we reached full approval threshold
     if (effectiveStatus === 'APPROVED' && isDpRequest) {
-      // Data product approval: do NOT change BigQuery IAM. The per-asset table
-      // grant caused access problems, so approval only records the decision;
-      // data-product data access is managed via its access group, not here.
-      iamStatus = 'DATA_PRODUCT_APPROVED_NO_IAM';
-      console.log(`[UPDATE] Data product request approved (no automatic IAM change) for ${requesterEmail}`);
+      // Data product approval grants REAL access: READER on every dataset the
+      // data product contains, so the requester can actually use all its tables.
       try {
+        const assetResources = await getDataProductAssetResources(linkedResource || originalRequest.assetName);
+        // Unique project.dataset pairs from the asset resources.
+        const datasets = new Map();
+        for (const r of assetResources) {
+          const m = String(r).match(/projects\/([^/]+)\/datasets\/([^/]+)/);
+          if (m) datasets.set(`${m[1]}.${m[2]}`, { project: m[1], dataset: m[2] });
+        }
+        console.log(`[UPDATE] Data product approval: granting READER on ${datasets.size} dataset(s) for ${requesterEmail}`);
+        let granted = 0;
+        for (const { project, dataset: dsId } of datasets.values()) {
+          try {
+            const bq = new BigQuery({ projectId: project });
+            const dsRef = bq.dataset(dsId);
+            const [metadata] = await dsRef.getMetadata();
+            const accessList = metadata.access || [];
+            if (!accessList.some(e => e.userByEmail?.toLowerCase() === requesterEmail.toLowerCase())) {
+              accessList.push({ role: 'READER', userByEmail: requesterEmail });
+              metadata.access = accessList;
+              await dsRef.setMetadata(metadata);
+              console.log(`[UPDATE] Granted READER on ${project}.${dsId} to ${requesterEmail}`);
+            }
+            granted++;
+          } catch (dsErr) {
+            console.warn(`[UPDATE] Failed to grant on ${project}.${dsId}: ${dsErr.message}`);
+          }
+        }
+        iamStatus = datasets.size > 0 ? 'SUCCESS' : 'DATA_PRODUCT_NO_DATASETS';
+        console.log(`[UPDATE] Data product grant complete: ${granted}/${datasets.size} dataset(s) for ${requesterEmail}`);
         await grantedAccessService.createGrantedAccess({
           userEmail: requesterEmail,
           assetName: originalRequest.assetName,
           gcpProjectId: originalRequest.gcpProjectId || iamProjectId || '',
-          role: 'data-product (approved, no IAM change)',
+          role: 'roles/bigquery.dataViewer (data product)',
           grantedBy: reviewerEmail,
           originalRequestId: requestId
         });
       } catch (e) {
-        console.warn('[UPDATE] createGrantedAccess (data product) failed (non-blocking):', e.message);
+        console.error('[UPDATE] Data product grant failed:', e.message);
+        return res.status(500).json({ success: false, error: 'Failed to grant data product access.', details: e.message });
       }
     } else if (effectiveStatus === 'APPROVED' && iamProjectId && datasetId) {
       try {
@@ -5685,6 +5711,39 @@ app.post('/api/v1/access-request/update', async (req, res) => {
       }
     } else if (effectiveStatus === 'PARTIALLY_APPROVED') {
       iamStatus = 'WAITING_FOR_CONSENSUS';
+    } else if (effectiveStatus === 'REVOKED' && isDpRequest) {
+      // Mirror the data-product grant: remove READER from every dataset.
+      try {
+        const assetResources = await getDataProductAssetResources(linkedResource || originalRequest.assetName);
+        const datasets = new Map();
+        for (const r of assetResources) {
+          const m = String(r).match(/projects\/([^/]+)\/datasets\/([^/]+)/);
+          if (m) datasets.set(`${m[1]}.${m[2]}`, { project: m[1], dataset: m[2] });
+        }
+        for (const { project, dataset: dsId } of datasets.values()) {
+          try {
+            const bq = new BigQuery({ projectId: project });
+            const dsRef = bq.dataset(dsId);
+            const [metadata] = await dsRef.getMetadata();
+            let accessList = metadata.access || [];
+            const before = accessList.length;
+            accessList = accessList.filter(a => a.userByEmail?.toLowerCase() !== requesterEmail.toLowerCase());
+            if (accessList.length < before) {
+              metadata.access = accessList;
+              await dsRef.setMetadata(metadata);
+              console.log(`[UPDATE] Revoked READER on ${project}.${dsId} from ${requesterEmail}`);
+            }
+          } catch (dsErr) {
+            console.warn(`[UPDATE] Failed to revoke on ${project}.${dsId}: ${dsErr.message}`);
+          }
+        }
+        iamStatus = 'SUCCESS';
+        const grant = await grantedAccessService.getGrantByRequestId(requestId);
+        if (grant) { await grantedAccessService.revokeAccess(grant.id, reviewerEmail); }
+      } catch (e) {
+        console.error('[UPDATE] Data product revoke failed:', e.message);
+        iamStatus = 'FAILED';
+      }
     } else if (effectiveStatus === 'REVOKED' && iamProjectId && datasetId) {
       try {
         console.log(`[UPDATE] Revoking BigQuery access: user=${requesterEmail}, project=${iamProjectId}, dataset=${datasetId}`);
