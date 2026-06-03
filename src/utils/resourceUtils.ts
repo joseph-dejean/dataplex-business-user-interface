@@ -201,7 +201,7 @@ export const generateDataProductConsoleLink = (entry: any): string => {
     const match = candidate.match(/projects\/([^/]+)\/locations\/([^/]+)\/dataProducts\/([^/?#]+)/);
     if (match) {
       const [, project, location, id] = match;
-      return `https://console.cloud.google.com/dataplex/projects/${project}/locations/${location}/dataProducts/${id}?project=${project}`;
+      return `https://console.cloud.google.com/dataplex/govern/data-products/projects/${project}/locations/${location}/dataProducts/${id}?project=${project}`;
     }
   }
   return '';
