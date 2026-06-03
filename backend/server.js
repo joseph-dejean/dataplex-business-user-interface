@@ -3781,6 +3781,52 @@ app.post('/api/v1/search', async (req, res) => {
       console.log(`[SEARCH] Keyword search found ${searchResults.length} results`);
     }
 
+    // --- TOKENIZE FALLBACK: strip natural-language filler and OR the meaningful
+    // terms. "Je cherche le profil des emprunteur" fails as a literal phrase, but
+    // dropping stop-words ("je", "cherche", "le", "des") and searching
+    // "profil OR emprunteur" matches the same as typing the bare keywords.
+    // Pure Dataplex keyword search — fast, no AI — so it runs before Gemini.
+    if (semanticSearch && searchResults.length === 0 && query && query !== '*') {
+      const STOPWORDS = new Set([
+        'je','tu','il','elle','on','nous','vous','ils','elles','le','la','les','un','une',
+        'des','de','du','au','aux','et','ou','à','a','en','dans','pour','sur','avec','sans',
+        'par','ce','cette','ces','mon','ma','mes','son','sa','ses','cherche','chercher',
+        'trouve','trouver','veux','voir','montre','montrer','donne','moi','me','tous','toutes',
+        'tout','quel','quelle','quels','quelles','où','est','sont','qui','que',
+        'the','an','of','for','find','show','my','i','want','to','is','are','where','which',
+        'that','this','data','asset','assets','table','tables','please','give','all','about','related'
+      ]);
+      const terms = String(query).toLowerCase()
+        .split(/[^a-z0-9àâäéèêëïîôöùûüç]+/i)
+        .filter(t => t.length >= 3 && !STOPWORDS.has(t));
+      if (terms.length > 0) {
+        const orQuery = terms.join(' OR ');
+        console.log(`[SEARCH][TOKENIZE] Retrying with OR of content terms: ${orQuery}`);
+        const tkPromises = allProjects.map(async (projId) => {
+          try {
+            const [tk] = await client.searchEntries({
+              name: `projects/${projId}/locations/${location}`,
+              query: orQuery,
+              pageSize: pageSize || 20,
+              semanticSearch: false
+            });
+            return tk || [];
+          } catch (err) {
+            console.warn(`[SEARCH][TOKENIZE] failed for ${projId}:`, err.message);
+            return [];
+          }
+        });
+        const tkSeen = new Set();
+        searchResults = (await Promise.all(tkPromises)).flat().filter(entry => {
+          const name = entry?.dataplexEntry?.name || entry?.name;
+          if (!name || tkSeen.has(name)) return false;
+          tkSeen.add(name);
+          return true;
+        });
+        console.log(`[SEARCH][TOKENIZE] Found ${searchResults.length} results`);
+      }
+    }
+
     // --- NATURAL-LANGUAGE FALLBACK: if both semantic and keyword search found
     // nothing, ask Gemini to turn the phrase into a keyword query and re-search.
     // Runs ONLY on 0-result searches, so normal searches stay fast. This is what
