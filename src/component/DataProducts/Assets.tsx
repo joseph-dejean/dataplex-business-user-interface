@@ -217,12 +217,25 @@ const Assets: React.FC<AssetsProps> = ({ entry, css, onAssetPreviewChange  }) =>
                 }
             ).then((response: any) => {
                 const details = response.data?.assets || [];
+                // Normalise to dataset.table so a project ID/number mismatch
+                // between the data-product resource and the catalog entry doesn't
+                // prevent a match (which would drop description + location).
+                const tableKey = (s: any): string => {
+                    const str = String(s || '');
+                    const m = str.match(/datasets\/([^/]+)\/tables\/([^/]+)/);
+                    if (m) return `${m[1]}.${m[2]}`.toLowerCase();
+                    const parts = str.replace(/^bigquery:/, '').split('.');
+                    return parts.length >= 2 ? parts.slice(-2).join('.').toLowerCase() : str.toLowerCase();
+                };
                 const byFqn = new Map(details.map((d: any) => [d.fullyQualifiedName, d]));
                 const byRes = new Map(details.map((d: any) => [d.resource, d]));
+                const byKey = new Map(details.map((d: any) => [tableKey(d.resource || d.fullyQualifiedName), d]));
                 const enriched = baseList.map((b: any) => {
                     const d: any = byFqn.get(b.dataplexEntry.fullyQualifiedName)
                         || byRes.get(b.dataplexEntry.name)
-                        || byRes.get(b.linkedResource);
+                        || byRes.get(b.linkedResource)
+                        || byKey.get(tableKey(b.linkedResource))
+                        || byKey.get(tableKey(b.dataplexEntry.fullyQualifiedName));
                     if (d) {
                         return {
                             ...b,
@@ -238,6 +251,7 @@ const Assets: React.FC<AssetsProps> = ({ entry, css, onAssetPreviewChange  }) =>
                                     displayName: d.displayName || b.dataplexEntry.entrySource.displayName,
                                     description: d.description || '',
                                     system: d.system || b.dataplexEntry.entrySource.system,
+                                    location: d.location || b.dataplexEntry.entrySource.location || '',
                                 },
                             },
                         };

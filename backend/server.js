@@ -5156,6 +5156,7 @@ app.post('/api/v1/asset-details', async (req, res) => {
         displayName: src.displayName || '',
         description: src.description || '',
         system: src.system || '',
+        location: src.location || '',
       };
     });
     res.json({ assets });
