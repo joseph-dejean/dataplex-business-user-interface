@@ -13,9 +13,12 @@ const GlobalChatPage: React.FC = () => {
     const [selectedTables, setSelectedTables] = useState<any[]>([]);
 
     useEffect(() => {
-        if (location.state?.selectedTable) {
+        // Accept either a single pre-selected table or a whole list (e.g. all the
+        // tables of a data product).
+        if (Array.isArray(location.state?.selectedTables) && location.state.selectedTables.length > 0) {
+            setSelectedTables(location.state.selectedTables.filter(Boolean));
+        } else if (location.state?.selectedTable) {
             setSelectedTables([location.state.selectedTable]);
-            // Clear location state to prevent re-open on refresh? No, maybe keep it.
         }
     }, [location.state]);
 

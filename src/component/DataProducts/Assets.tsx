@@ -6,6 +6,8 @@ import {
   Skeleton
 } from '@mui/material';
 import { useSelector } from 'react-redux';
+import { useNavigate } from 'react-router-dom';
+import { AutoAwesome } from '@mui/icons-material';
 import DataProductAssets from './DataProductAssets';
 import ShimmerLoader from '../Shimmer/ShimmerLoader';
 import { useAuth } from '../../auth/AuthProvider';
@@ -141,7 +143,18 @@ const Assets: React.FC<AssetsProps> = ({ entry, css, onAssetPreviewChange  }) =>
 
     //const dispatch = useDispatch<AppDispatch>();
     const {dataProductAssets, dataProductAssetsStatus }= useSelector((state: any) => state.dataProducts);
+    const navigate = useNavigate();
     const [dataProductsAssetsList, setDataProductsAssetsList] = useState([]);
+
+    // Open the AI chat with EVERY table of this data product pre-selected.
+    const chatWithAllTables = () => {
+        const tables = (dataProductsAssetsList || [])
+            .map((a: any) => a.dataplexEntry)
+            .filter(Boolean);
+        if (tables.length > 0) {
+            navigate('/global-chat', { state: { selectedTables: tables } });
+        }
+    };
     const [assetListLoader, setAssetListLoader] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     const { user } = useAuth();
@@ -372,7 +385,7 @@ const Assets: React.FC<AssetsProps> = ({ entry, css, onAssetPreviewChange  }) =>
                 />
                 <>
                     {dataProductAssetsStatus === 'succeeded' && dataProductsAssetsList.length > 0 && (() => {
-              
+
                         return (
                             <FilterTag
                                 key={`type-All`}
@@ -533,6 +546,33 @@ const Assets: React.FC<AssetsProps> = ({ entry, css, onAssetPreviewChange  }) =>
                     //             );
                     // })
                     <Box>
+                        <Box sx={{ display: 'flex', justifyContent: 'flex-end', padding: '0 8px 12px' }}>
+                            <Box
+                                component="button"
+                                onClick={chatWithAllTables}
+                                sx={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    height: '36px',
+                                    padding: '8px 16px',
+                                    background: '#0B57D0',
+                                    color: '#FFFFFF',
+                                    border: 'none',
+                                    borderRadius: '100px',
+                                    fontFamily: '"Google Sans", sans-serif',
+                                    fontSize: '13px',
+                                    fontWeight: 500,
+                                    cursor: 'pointer',
+                                    whiteSpace: 'nowrap',
+                                    transition: 'background-color 0.2s ease',
+                                    '&:hover': { background: '#1A5CD8' },
+                                }}
+                            >
+                                <AutoAwesome sx={{ fontSize: '16px' }} />
+                                Chat with all tables
+                            </Box>
+                        </Box>
                         <DataProductAssets
                         linkedAssets={dataProductsAssetsList || []}
                         searchTerm={searchTerm}
