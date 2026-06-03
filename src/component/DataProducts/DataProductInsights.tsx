@@ -54,21 +54,13 @@ const unwrapFields = (fields: any): any => {
   return out;
 };
 
-// Pick the first string value whose key matches one of `keys` (case-insensitive).
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const pickString = (obj: any, keys: string[]): string | null => {
-  if (!obj || typeof obj !== 'object') return null;
-  for (const k of Object.keys(obj)) {
-    if (keys.includes(k.toLowerCase())) {
-      const val = obj[k];
-      if (typeof val === 'string' && val.trim()) return val;
-    }
-  }
-  return null;
-};
-
-const SQL_KEYS = ['query', 'sql', 'statement', 'querytext', 'query_text', 'sqlquery'];
 const DESC_KEYS = ['description', 'prompt', 'question', 'name', 'title', 'nl', 'natural_language', 'naturallanguage', 'label'];
+
+// A string is the SQL (not the natural-language prompt) when it reads like a
+// query. We detect by CONTENT, not field name, because the aspect stores the
+// description and the SQL under unpredictable keys.
+const looksLikeSql = (s: unknown): boolean =>
+  typeof s === 'string' && /\bSELECT\b[\s\S]*\bFROM\b/i.test(s);
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const extractQueries = (entry: any): RecommendedQuery[] => {
@@ -92,19 +84,31 @@ const extractQueries = (entry: any): RecommendedQuery[] => {
     const scan = (node: any) => {
       if (!node) return;
       if (Array.isArray(node)) { node.forEach(scan); return; }
-      if (typeof node === 'object') {
-        const sql = pickString(node, SQL_KEYS);
-        if (sql) {
-          const description = pickString(node, DESC_KEYS) || 'Recommended query';
-          const dedupeKey = sql.replace(/\s+/g, ' ').trim();
-          if (!seen.has(dedupeKey)) {
-            seen.add(dedupeKey);
-            result.push({ description, query: sql });
-          }
-          return;
+      if (typeof node !== 'object') return;
+      // Collect this node's string fields, then identify the SQL by content.
+      const strings = Object.entries(node)
+        .filter(([, v]) => typeof v === 'string' && (v as string).trim()) as [string, string][];
+      const sqlEntry = strings.find(([, v]) => looksLikeSql(v));
+      if (sqlEntry) {
+        const sql = sqlEntry[1];
+        // Description: prefer a known description field; else the first other
+        // non-SQL string; else a default.
+        let description = '';
+        for (const [k, v] of strings) {
+          if (v !== sql && DESC_KEYS.includes(k.toLowerCase())) { description = v; break; }
         }
-        Object.values(node).forEach(scan);
+        if (!description) {
+          const other = strings.find(([, v]) => v !== sql && !looksLikeSql(v));
+          description = other ? other[1] : 'Recommended query';
+        }
+        const dedupeKey = sql.replace(/\s+/g, ' ').trim();
+        if (!seen.has(dedupeKey)) {
+          seen.add(dedupeKey);
+          result.push({ description, query: sql });
+        }
+        return;
       }
+      Object.values(node).forEach(scan);
     };
     scan(data);
   }
