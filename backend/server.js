@@ -3867,6 +3867,82 @@ Return JSON: {"dataplexQuery": "your optimized query string"}`;
       }
     }
 
+    // --- DOC-AWARE NATURAL-LANGUAGE FALLBACK (retrieve-then-rerank) ---
+    // If literal + keyword-rewrite search still found nothing, retrieve a broad
+    // set of catalog entries and let Gemini READ their names + descriptions to
+    // pick the ones matching the user's intent. Unlike keyword rewriting, this
+    // actually understands the descriptions, so e.g. "Je cherche les profil
+    // emprunteur" matches a data product described "Profil emprunteur".
+    // Runs ONLY on 0-result searches, so normal searches stay fast.
+    if (semanticSearch && searchResults.length === 0 && query && query !== '*') {
+      try {
+        console.log(`[SEARCH][NL-RERANK] Doc-aware rerank for: "${query}"`);
+
+        // 1. Broad retrieve: pull a capped set of entries (names + descriptions).
+        const RETRIEVE_LIMIT = 100;
+        const candPromises = allProjects.map(async (projId) => {
+          try {
+            const [cands] = await client.searchEntries({
+              name: `projects/${projId}/locations/${location}`,
+              query: '*',
+              pageSize: RETRIEVE_LIMIT,
+              semanticSearch: false
+            });
+            return cands || [];
+          } catch (err) {
+            console.warn(`[SEARCH][NL-RERANK] retrieve failed for ${projId}:`, err.message);
+            return [];
+          }
+        });
+        const candSeen = new Set();
+        const candidates = (await Promise.all(candPromises)).flat().filter(entry => {
+          const name = entry?.dataplexEntry?.name || entry?.name;
+          if (!name || candSeen.has(name)) return false;
+          candSeen.add(name);
+          return true;
+        });
+        console.log(`[SEARCH][NL-RERANK] Retrieved ${candidates.length} candidates`);
+
+        if (candidates.length > 0) {
+          // 2. Compact catalog for the model: "index: name — description [type]".
+          const catalogList = candidates.map((entry, i) => {
+            const core = entry.dataplexEntry || entry;
+            const src = core.entrySource || {};
+            const dn = src.displayName || core.displayName
+              || (core.fullyQualifiedName || '').split(/[.:]/).pop()
+              || (core.name || '').split('/').pop() || `entry ${i}`;
+            const desc = (src.description || core.description || '').replace(/\s+/g, ' ').slice(0, 300);
+            const type = (core.entryType || '').split('/').pop();
+            return `${i}: ${dn}${desc ? ` — ${desc}` : ''}${type ? ` [${type}]` : ''}`;
+          }).join('\n');
+
+          // 3. Ask Gemini to pick matching indices by READING the descriptions.
+          const vertex_ai = new VertexAI({ project: PROJECT_ID, location: 'us-central1' });
+          const model = vertex_ai.getGenerativeModel({ model: 'gemini-2.5-flash' });
+          const prompt = `You are a data catalog search engine. The user is searching (possibly in French) for data assets.
+
+User query: "${query}"
+
+Catalog (one entry per line, "index: name — description [type]"):
+${catalogList}
+
+Return ONLY a JSON array of the indices (numbers) of entries that match the user's intent, best match first. Match on MEANING, not exact words (e.g. "profil emprunteur" matches a borrower-profile asset; "finance" matches "financement"). If nothing is relevant, return []. Example: [3, 7, 1]`;
+
+          const aiRes = await model.generateContent(prompt);
+          const txt = (aiRes?.response?.candidates?.[0]?.content?.parts?.[0]?.text || '[]').trim();
+          const clean = txt.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+          let picked = [];
+          try { picked = JSON.parse(clean); } catch { picked = []; }
+          if (Array.isArray(picked)) {
+            searchResults = picked.map(i => candidates[Number(i)]).filter(Boolean);
+          }
+          console.log(`[SEARCH][NL-RERANK] Gemini picked ${searchResults.length} entries: ${clean.slice(0, 120)}`);
+        }
+      } catch (e) {
+        console.error('[SEARCH][NL-RERANK] FATAL:', e.message);
+      }
+    }
+
     // --- BIGQUERY INFORMATION_SCHEMA FALLBACK (opt-in only) ---
     // If Dataplex returned 0 results (catalog not accessible or not set up),
     // optionally fall back to BigQuery INFORMATION_SCHEMA. Off by default so a
