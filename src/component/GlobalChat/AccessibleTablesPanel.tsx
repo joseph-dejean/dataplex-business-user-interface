@@ -105,12 +105,16 @@ const AccessibleTablesPanel: React.FC<AccessibleTablesPanelProps> = ({
         });
     };
 
+    // Compare tolerantly: pre-selected tables (e.g. from a data product) may
+    // carry the FQN with/without the `bigquery:` prefix or different casing, so
+    // an exact === comparison left the checkbox unchecked.
+    const normFqn = (s: any) => String(s || '').replace(/^bigquery:/i, '').toLowerCase();
     const isSelected = (table: TableEntry) =>
-        selectedTables.some(t => t.fullyQualifiedName === table.fullyQualifiedName);
+        selectedTables.some(t => normFqn(t.fullyQualifiedName) === normFqn(table.fullyQualifiedName));
 
     const toggleTable = (table: TableEntry) => {
         if (isSelected(table)) {
-            onSelectionChange(selectedTables.filter(t => t.fullyQualifiedName !== table.fullyQualifiedName));
+            onSelectionChange(selectedTables.filter(t => normFqn(t.fullyQualifiedName) !== normFqn(table.fullyQualifiedName)));
         } else {
             onSelectionChange([...selectedTables, table]);
         }
