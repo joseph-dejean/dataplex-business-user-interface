@@ -5,6 +5,7 @@ import { Close, LockOutlined } from '@mui/icons-material';
 import './ResourcePreview.css';
 import { useDispatch, useSelector } from 'react-redux';
 import { fetchEntry, clearHistory } from '../../features/entry/entrySlice';
+import { getDataProductDetails, setDataProductsDetailTabValue } from '../../features/dataProducts/dataProductsSlice';
 import PreviewSchema from '../Schema/PreviewSchema';
 import PreviewAnnotation from '../Annotation/PreviewAnnotation';
 import SchemaFilter from '../Schema/SchemaFilter';
@@ -135,8 +136,15 @@ const ResourcePreview: React.FC<ResourcePreviewProps> = ({
   // Glossary / category / term entries are metadata-only — no access gating.
   const previewEntryType: string = previewData?.entryType || previewData?.dataplexEntry?.entryType || '';
   const isPreviewGlossaryLike = /glossary|category|term/i.test(previewEntryType);
+  // Data products aren't BigQuery datasets, so the dataset-based access check
+  // can't evaluate them and reports "no access" — making a data product the only
+  // locked asset even when the user has access (via its access group). Never
+  // gate navigation to a data product here; its own page governs access.
+  const previewResource: string = previewData?.entrySource?.resource || previewData?.dataplexEntry?.entrySource?.resource || previewData?.name || '';
+  const isPreviewDataProduct = /product/i.test(previewEntryType) || /\/dataProducts\//.test(previewResource);
+  const isMetadataOnly = isPreviewGlossaryLike || isPreviewDataProduct;
   const isAccessDenied =
-    !isPreviewGlossaryLike && (
+    !isMetadataOnly && (
       cachedAccess?.status === 'failed' ||
       (cachedAccess?.status === 'succeeded' && cachedAccess.hasAccess === false) ||
       userHasAccessFlag === false
@@ -212,6 +220,16 @@ const ResourcePreview: React.FC<ResourcePreviewProps> = ({
   };
 
   const handleViewDetails = (entry: any) => {
+    // Data products have their own page (Assets, Access groups, Contract,
+    // Insights); route them there directly instead of the generic detail page.
+    const resource = entry?.entrySource?.resource || entry?.name || entry?.fullyQualifiedName || previewResource || '';
+    const dpMatch = String(resource).match(/projects\/[^/]+\/locations\/[^/]+\/dataProducts\/[^/?#]+/);
+    if (dpMatch) {
+      dispatch(setDataProductsDetailTabValue(0));
+      dispatch(getDataProductDetails({ dataProductId: dpMatch[0], id_token }));
+      navigate(`/data-products-details?dataProductId=${encodeURIComponent(dpMatch[0])}`);
+      return;
+    }
     if (onViewDetails) {
       onViewDetails(entry);
     } else {

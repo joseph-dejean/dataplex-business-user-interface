@@ -225,9 +225,14 @@ const SearchEntriesCard: React.FC<SearchEntriesCardProps> = ({ entry, sx, isSele
   const entryAccessStatus = entryAccessCached?.status as string | undefined;
   const isAccessConfirmed = entryAccessStatus === 'succeeded' && entryAccessCached?.hasAccess !== false;
   const isAccessLoading = entryAccessStatus === 'loading';
-  // Glossary / category / term entries are metadata-only — access gating does not apply.
+  // Metadata-only entries are never shown as access-denied: glossary terms, and
+  // data products (which aren't BigQuery datasets, so the dataset-based access
+  // check can't evaluate them and wrongly reports no-access). Their own pages
+  // govern access.
   const rawEntryType: string = (entry as any)?.entryType || '';
-  const isGlossaryLike = /glossary|category|term/i.test(rawEntryType);
+  const rawEntryResource: string = (entry as any)?.entrySource?.resource || entry?.name || (entry as any)?.fullyQualifiedName || '';
+  const isDataProductEntry = /product/i.test(rawEntryType) || /\/dataProducts\//.test(rawEntryResource);
+  const isGlossaryLike = /glossary|category|term/i.test(rawEntryType) || isDataProductEntry;
   // Deny ONLY on a definitive "no access" from the authoritative check. Do not
   // block on a failed/errored check (transient) or on the userHasAccess search
   // annotation (which ignores project owners) — that was blocking users who
