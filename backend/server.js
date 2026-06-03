@@ -3790,7 +3790,7 @@ app.post('/api/v1/search', async (req, res) => {
       try {
         console.log(`[SEARCH][GEMINI-FALLBACK] Initiating for query: "${query}"`);
         
-        const aiModel = 'gemini-2.5-flash';
+        const aiModel = 'gemini-3.1-flash-lite';
         const aiLocation = 'us-central1';
         
         console.log(`[SEARCH][GEMINI-FALLBACK] Connecting to Vertex AI in ${aiLocation} using model ${aiModel}`);
@@ -3918,7 +3918,7 @@ Return JSON: {"dataplexQuery": "your optimized query string"}`;
 
           // 3. Ask Gemini to pick matching indices by READING the descriptions.
           const vertex_ai = new VertexAI({ project: PROJECT_ID, location: 'us-central1' });
-          const model = vertex_ai.getGenerativeModel({ model: 'gemini-2.5-flash' });
+          const model = vertex_ai.getGenerativeModel({ model: 'gemini-3.1-flash-lite' });
           const prompt = `You are a data catalog search engine. The user is searching (possibly in French) for data assets.
 
 User query: "${query}"
