@@ -3,7 +3,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 import Tag from '../Tags/Tag';
-import { AccessTime, LocationOnOutlined, LockOutlined } from '@mui/icons-material';
+import { AccessTime, LocationOnOutlined, LockOutlined, AutoAwesome } from '@mui/icons-material';
 import BigQueryProductIcon from '../../assets/svg/BigQuery.svg';
 import './SearchEntriesCard.css';
 import { type SxProps, type Theme } from '@mui/material/styles';
@@ -217,6 +217,12 @@ const SearchEntriesCard: React.FC<SearchEntriesCardProps> = ({ entry, sx, isSele
     dispatch(clearHistory());
     dispatch(fetchEntry({ entryName: entry.name, id_token }));
     navigate('/view-details');
+  };
+
+  // Open the AI chat with this table pre-selected as context.
+  const openChatWithTable = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    navigate('/global-chat', { state: { selectedTable: (entry as any)?.dataplexEntry || entry } });
   };
   const mode = useSelector((state: any) => state.user.mode) as string;
   const userEmail = useSelector((state: any) => state.user.userData?.email) as string | undefined;
@@ -772,6 +778,30 @@ const SearchEntriesCard: React.FC<SearchEntriesCardProps> = ({ entry, sx, isSele
                       <img src="/assets/svg/looker-icon.svg" alt="Looker Studio" style={{ width: '20px', height: '20px' }} />
                     </div>
                   )
+                )}
+
+                {/* Chat — ask the AI about this table, with it pre-selected. */}
+                {entry.entrySource?.system?.toLowerCase() === 'bigquery' && (
+                  <Tooltip title="Chat with this table" arrow placement="top">
+                    <Box
+                      onClick={openChatWithTable}
+                      sx={{
+                        width: '32px',
+                        height: '32px',
+                        border: mode === 'dark' ? '1px solid #5f6368' : '1px solid #C5C7C5',
+                        borderRadius: '100px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        cursor: 'pointer',
+                        boxSizing: 'border-box',
+                        transition: 'background-color 0.2s ease',
+                        '&:hover': { backgroundColor: mode === 'dark' ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.04)' },
+                      }}
+                    >
+                      <AutoAwesome sx={{ fontSize: '18px', color: mode === 'dark' ? '#a7c6fa' : '#0B57D0' }} />
+                    </Box>
+                  </Tooltip>
                 )}
 
                 {/* Details Button — ALWAYS clickable. Browsing an asset's metadata
