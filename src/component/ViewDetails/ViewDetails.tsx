@@ -372,9 +372,14 @@ useEffect(() => {
       );
       setDpScanName(dpScan ? dpScan.name : null);
 
+      // Match leniently (like the DQ/DP scans above): the scan's resource may
+      // carry a `//bigquery.googleapis.com/` prefix or a different project
+      // format, so an exact === comparison was missing real Data Documentation
+      // scans and leaving the Insights tab empty.
       const tableInsightsScan = allScans.find(
         (scan: any) =>
-          (scan.data.resource === resourceName || scan.data.resource === `//bigquery.googleapis.com/${resourceName}`) && (scan.type === 'DATA_DOCUMENTATION' || scan.type === 4)
+          (scan.type === 'DATA_DOCUMENTATION' || scan.type === 4) &&
+          (scan?.data?.resource?.includes(resourceName) || resourceName.includes(scan?.data?.resource?.replace('//bigquery.googleapis.com/', '')))
       );
       console.log("Table Insights Scans found:", tableInsightsScan);
       setTableInsightsScanName(tableInsightsScan?.name || null);

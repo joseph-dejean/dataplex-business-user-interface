@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Box, Typography, IconButton, Collapse, Tooltip, Chip } from '@mui/material';
+import { Box, Typography, IconButton, Collapse, Tooltip, Chip, Snackbar } from '@mui/material';
 import { ExpandMore, ExpandLess, ContentCopy, AutoAwesome, OpenInNew } from '@mui/icons-material';
 import { Highlight, themes } from 'prism-react-renderer';
 
@@ -119,6 +119,7 @@ const DataProductInsights: React.FC<DataProductInsightsProps> = ({ entry }) => {
   const queries = useMemo(() => extractQueries(entry), [entry]);
   const [expanded, setExpanded] = useState<number | null>(0);
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+  const [bqCopied, setBqCopied] = useState(false);
 
   const handleCopy = async (query: string, index: number) => {
     try {
@@ -131,12 +132,19 @@ const DataProductInsights: React.FC<DataProductInsightsProps> = ({ entry }) => {
     }
   };
 
-  // BigQuery Studio deep-link: the SQL (with the description as a leading
-  // comment) is URL-encoded into the `create-new-query-tab` matrix parameter,
-  // which opens a new query tab pre-filled with the query — same behaviour as
-  // the Dataplex console's "Open in BigQuery".
-  const openInBigQuery = (item: RecommendedQuery) => {
+  // Open BigQuery Studio for the query. We try the `create-new-query-tab`
+  // deep-link (auto-fills the editor when the console honours it), but that
+  // isn't reliable across console hosts — so we ALSO copy the SQL to the
+  // clipboard and tell the user to paste, which always works.
+  const openInBigQuery = async (item: RecommendedQuery) => {
     const text = `-- ${item.description}\n${item.query}`;
+    try {
+      await navigator.clipboard.writeText(item.query);
+      setBqCopied(true);
+      setTimeout(() => setBqCopied(false), 4000);
+    } catch {
+      // clipboard may be blocked; the deep-link below is the fallback
+    }
     const url = `https://console.cloud.google.com/bigquery;create-new-query-tab=${encodeURIComponent(text)}`;
     window.open(url, '_blank', 'noopener,noreferrer');
   };
@@ -257,6 +265,13 @@ const DataProductInsights: React.FC<DataProductInsightsProps> = ({ entry }) => {
           ))}
         </Box>
       )}
+      <Snackbar
+        open={bqCopied}
+        autoHideDuration={4000}
+        onClose={() => setBqCopied(false)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        message="Query copied — paste it in BigQuery (Ctrl+V) if it doesn't load automatically"
+      />
     </Box>
   );
 };
