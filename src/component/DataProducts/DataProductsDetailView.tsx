@@ -14,6 +14,7 @@ import Assets from './Assets'
 import AccessGroup from './AccessGroup'
 import Contract from './Contract'
 import DataProductOverviewNew from './DataProductOverviewNew'
+import DataProductInsights from './DataProductInsights'
 import SubmitAccess from '../SearchPage/SubmitAccess'
 import NotificationBar from '../SearchPage/NotificationBar'
 import { useAccessRequest } from '../../contexts/AccessRequestContext'
@@ -571,6 +572,7 @@ const tabProps = (index: number)  => {
                             <Tab key="accessGroup&Permission" label="Access Groups & Permissions" {...tabProps(2)} />
                             <Tab key="contract" label="Contract" {...tabProps(3)} />
                             <Tab key="annotations" label="Aspects" {...tabProps(4)} />
+                            <Tab key="insights" label="Insights" {...tabProps(5)} />
                         </Tabs>
                     </Box>
                 </Box>
@@ -602,6 +604,9 @@ const tabProps = (index: number)  => {
                             onExpandAll={handleAnnotationExpandAll}
                         />
                         {annotationTab}
+                    </CustomTabPanel>
+                    <CustomTabPanel value={tabValue} index={5}>
+                        <DataProductInsights entry={selectedDataProductDetails} />
                     </CustomTabPanel>
             </div>
           </div>
